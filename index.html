@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Melody Lab</title>
+  <title>Melody Lab — 音符池 → 風格 → 自動生成（試聽＋下載）</title>
   <style>
     :root{
       --bg:#0b1220; --panel:#0f1b2d; --muted:#9aa4b2; --accent:#67e8f9; --ok:#86efac; --warn:#fde68a; --danger:#fca5a5;
@@ -80,11 +80,24 @@
           <div>
             <label>旋律樂器</label>
             <select id="lead">
-              <option value="sine">Sine (純音)</option>
               <option value="piano" selected>Piano</option>
-              <option value="guitar">Guitar</option>
+              <option value="electric_piano">Electric Piano</option>
+              <option value="organ">Organ</option>
+              <option value="clean_guitar">Clean Guitar</option>
+              <option value="overdrive_guitar">Overdrive Guitar</option>
+              <option value="acoustic_guitar">Acoustic Guitar</option>
               <option value="violin">Violin</option>
+              <option value="cello">Cello</option>
+              <option value="strings">Strings Pad</option>
+              <option value="flute">Flute</option>
+              <option value="clarinet">Clarinet</option>
+              <option value="sax">Saxophone</option>
+              <option value="trumpet">Trumpet</option>
+              <option value="pluck">Pluck</option>
+              <option value="bell">Bell</option>
+              <option value="pad">Synth Pad</option>
               <option value="saw">Synth Saw</option>
+              <option value="sine">Sine (純音)</option>
             </select>
           </div>
           <div>
@@ -104,6 +117,8 @@
         </div>
         <div class="hint">提示：音符格式如 <code>E3</code>、<code>G#4</code>、<code>Bb3</code>。空白與換行會自動忽略。</div>
         <div class="stack" style="margin-top:10px">
+          <button class="btn" id="btnAudio">解鎖音訊</button>
+          <button class="btn" id="btnTest">測試聲音</button>
           <button class="btn primary" id="btnGenerate">生成</button>
           <button class="btn" id="btnPlay">播放</button>
           <button class="btn" id="btnStop">停止</button>
@@ -331,88 +346,138 @@ function buildMIDI(mel, acc, bpm, ppq=480){
 }
 
 // ===== Tone.js playback / offline render =====
-async function scheduleTone(mel, acc, bpm, leadSel, chordsOn, drumsOn){
-  // 必須先解鎖音訊（避免瀏覽器阻擋）
-  await Tone.start();
-  Tone.Destination.volume.value = -6; // 降低總音量避免爆音
-  const secPerBeat = 60/bpm;
-  const now = Tone.now() + 0.2; // 稍微延後，確保已解鎖
+async function unlockAudio(){
+  try{
+    await Tone.start();
+    if(Tone.context.state!=='running') await Tone.context.resume();
+    setLog('音訊已解鎖。');
+  }catch(e){ setLog('解鎖失敗：'+e.message); }
+}
 
-  // 旋律音色（全部改為內建合成器，避免外部取樣載入失敗）
+function disposeNodes(){
+  if(CURRENT.part){ try{ CURRENT.part.stop(); CURRENT.part.dispose(); }catch(e){} CURRENT.part=null; }
+  if(CURRENT.nodes){ CURRENT.nodes.forEach(n=>{try{n.dispose&&n.dispose()}catch(e){}}); CURRENT.nodes=[]; }
+  Tone.Transport.stop(); Tone.Transport.cancel();
+}
+
+function buildTransportPlayback(mel, acc, bpm, leadSel, chordsOn, drumsOn){
+  disposeNodes();
+  Tone.Transport.bpm.value = bpm;
+  const nodes = [];
   let lead;
   switch(leadSel){
     case 'piano':
-      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.2,sustain:0.6,release:0.4}}).toDestination();
+      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.25,sustain:0.6,release:0.5}});
       break;
-    case 'guitar':
-      lead = new Tone.AMSynth({harmonicity:1.5, modulationIndex:2, oscillator:{type:'sawtooth'}}).toDestination();
+    case 'electric_piano':
+      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.005,decay:0.3,sustain:0.5,release:0.8}});
+      break;
+    case 'organ':
+      lead = new Tone.Synth({oscillator:{type:'square'}, envelope:{attack:0.02,decay:0.1,sustain:0.9,release:0.2}});
+      break;
+    case 'clean_guitar':
+      lead = new Tone.AMSynth({harmonicity:1.5, modulationIndex:3, oscillator:{type:'sawtooth'}, envelope:{attack:0.01,decay:0.2,sustain:0.4,release:0.7}});
+      break;
+    case 'overdrive_guitar':
+      lead = new Tone.DuoSynth({harmonicity:1.01, voice0:{oscillator:{type:'sawtooth'}}, voice1:{oscillator:{type:'square'}}, vibratoAmount:0.1});
+      break;
+    case 'acoustic_guitar':
+      lead = new Tone.PluckSynth();
       break;
     case 'violin':
-      lead = new Tone.FMSynth({modulationIndex:8, oscillator:{type:'sine'}}).toDestination();
+      lead = new Tone.FMSynth({modulationIndex:10, oscillator:{type:'sine'}, envelope:{attack:0.05,decay:0.2,sustain:0.8,release:0.6}});
+      break;
+    case 'cello':
+      lead = new Tone.FMSynth({modulationIndex:12, oscillator:{type:'sine'}, envelope:{attack:0.03,decay:0.3,sustain:0.85,release:0.8}});
+      break;
+    case 'strings':
+      lead = new Tone.Synth({oscillator:{type:'sawtooth'}, envelope:{attack:0.2,decay:0.5,sustain:0.7,release:1.2}});
+      break;
+    case 'flute':
+      lead = new Tone.Synth({oscillator:{type:'sine'}, envelope:{attack:0.02,decay:0.2,sustain:0.7,release:0.5}});
+      break;
+    case 'clarinet':
+      lead = new Tone.Synth({oscillator:{type:'square'}, envelope:{attack:0.01,decay:0.2,sustain:0.7,release:0.5}});
+      break;
+    case 'sax':
+      lead = new Tone.FMSynth({harmonicity:2, modulationIndex:2, envelope:{attack:0.01,decay:0.2,sustain:0.6,release:0.5}});
+      break;
+    case 'trumpet':
+      lead = new Tone.FMSynth({harmonicity:1.5, modulationIndex:4, envelope:{attack:0.01,decay:0.15,sustain:0.5,release:0.4}});
+      break;
+    case 'pluck':
+      lead = new Tone.PluckSynth();
+      break;
+    case 'bell':
+      lead = new Tone.MetalSynth({frequency:440, envelope:{attack:0.001,decay:1.2,release:0.2}, harmonicity:5, resonance:400});
+      break;
+    case 'pad':
+      lead = new Tone.Synth({oscillator:{type:'sawtooth'}, envelope:{attack:0.3,decay:0.5,sustain:0.8,release:1.5}});
       break;
     case 'saw':
-      lead = new Tone.Synth({oscillator:{type:'sawtooth'}}).toDestination();
+      lead = new Tone.Synth({oscillator:{type:'sawtooth'}});
       break;
-    default:
-      lead = new Tone.Synth().toDestination();
+    case 'sine':
+      lead = new Tone.Synth({oscillator:{type:'sine'}});
+      break;
+    default: lead = new Tone.Synth();
   }
+  lead.volume.value = -6; lead.toDestination(); nodes.push(lead);
+  const chordSynth = new Tone.PolySynth(Tone.Synth, {volume:-10}).toDestination(); nodes.push(chordSynth);
+  const bassSynth = new Tone.MonoSynth({filter:{frequency: 200}, volume:-6}).toDestination(); nodes.push(bassSynth);
+  const kick = new Tone.MembraneSynth({volume:-2}).toDestination(); nodes.push(kick);
+  const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-12}).toDestination(); nodes.push(snare);
+  const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-16}).toDestination(); nodes.push(hat);
 
-  const chordSynth = new Tone.PolySynth(Tone.Synth, {volume:-8}).toDestination();
-  const bassSynth = new Tone.MonoSynth({filter: {frequency: 200}, volume:-4}).toDestination();
-  const kick = new Tone.MembraneSynth({volume:-2}).toDestination();
-  const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-8}).toDestination();
-  const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-12}).toDestination();
+  const secPerBeat = 60/bpm;
+  const events = [];
+  let t=0; for(const [n,d] of mel){ events.push({time:t, type:'mel', n, d: d*secPerBeat}); t+=d*secPerBeat; }
+  t=0; for(const [n,d] of acc.bass){ events.push({time:t, type:'bass', n: n!=null?Math.max(0,n-12):null, d: d*secPerBeat}); t+=d*secPerBeat; }
+  if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ events.push({time:t, type:'chord', notes, d:d*secPerBeat}); t+=d*secPerBeat; } }
+  if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ events.push({time:t, type:name, d:secPerBeat/3}); } t+=secPerBeat/3; } }
 
-  // 安排事件（使用絕對時間，不啟動 Transport 也能播放）
-  let t = 0; const dur = d => d*secPerBeat;
-  for(const [n,d] of mel){ if(n!=null){ lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), now+t); } t += dur(d); }
-  t=0; for(const [n,d] of acc.bass){ if(n!=null){ bassSynth.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), now+t); } t += dur(d); }
-  if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ chordSynth.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), now+t); } t += dur(d); } }
-  if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', now+t); else if(name==='snare') snare.triggerAttackRelease('8n', now+t); else hat.triggerAttackRelease('32n', now+t); } t += secPerBeat/3; } }
+  const part = new Tone.Part((time, ev)=>{
+    switch(ev.type){
+      case 'mel': if(ev.n!=null) lead.triggerAttackRelease(Tone.Frequency(ev.n,'midi'), ev.d, time); break;
+      case 'bass': if(ev.n!=null) bassSynth.triggerAttackRelease(Tone.Frequency(ev.n,'midi'), ev.d, time); break;
+      case 'chord': if(ev.notes && ev.notes.length) chordSynth.triggerAttackRelease(ev.notes.map(nn=>Tone.Frequency(nn,'midi')), ev.d, time); break;
+      case 'kick': kick.triggerAttackRelease('C1','8n', time); break;
+      case 'snare': snare.triggerAttackRelease('8n', time); break;
+      case 'hat': hat.triggerAttackRelease('32n', time); break;
+    }
+  }, events).start(0);
 
-  // 這裡不使用 Transport.start()，因為全部用絕對時間排程
+  CURRENT.part = part; CURRENT.nodes = nodes;
+}
+
+async function scheduleTone(mel, acc, bpm, leadSel, chordsOn, drumsOn){
+  await unlockAudio();
+  buildTransportPlayback(mel, acc, bpm, leadSel, chordsOn, drumsOn);
+  Tone.Transport.start();
 }
 
 async function renderOfflineWav(mel, acc, bpm, leadSel, chordsOn, drumsOn){
   const secPerBeat = 60/bpm; const totalSec = mel.reduce((a,[,d])=>a+d,0)*secPerBeat + 1.0;
   const buffer = await Tone.Offline(async ()=>{
-    const lead = new Tone.Synth({oscillator:{type:'triangle'}}).toDestination();
-    const chord = new Tone.PolySynth(Tone.Synth).toDestination();
-    const bass = new Tone.MonoSynth({filter:{frequency:200}}).toDestination();
-    const kick = new Tone.MembraneSynth().toDestination();
-    const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}}).toDestination();
-    const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}}).toDestination();
-    let t=0; const dur = d => d*secPerBeat;
-    for(const [n,d] of mel){ if(n!=null){ lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), t); } t += dur(d); }
-    t=0; for(const [n,d] of acc.bass){ if(n!=null){ bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), t); } t += dur(d); }
-    if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), t); } t += dur(d); } }
-    if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', t); else if(name==='snare') snare.triggerAttackRelease('8n', t); else hat.triggerAttackRelease('32n', t); } t += secPerBeat/3; } }
+    const lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.2,sustain:0.6,release:0.4}}).toDestination();
+    const chord = new Tone.PolySynth(Tone.Synth, {volume:-10}).toDestination();
+    const bass = new Tone.MonoSynth({filter:{frequency:200}, volume:-6}).toDestination();
+    const kick = new Tone.MembraneSynth({volume:-2}).toDestination();
+    const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-12}).toDestination();
+    const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-16}).toDestination();
+    let t=0; const dur=d=>d*secPerBeat;
+    for(const [n,d] of mel){ if(n!=null) lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), t); t+=dur(d); }
+    t=0; for(const [n,d] of acc.bass){ if(n!=null) bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), t); t+=dur(d); }
+    if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length) chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), t); t+=dur(d); } }
+    if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', t); else if(name==='snare') snare.triggerAttackRelease('8n', t); else hat.triggerAttackRelease('32n', t); } t+=secPerBeat/3; } }
   }, totalSec);
-  // encode WAV
   const ch = buffer.numberOfChannels; const len = buffer.length; const sr=buffer.sampleRate;
   const interleaved = new Float32Array(len*ch);
-  for(let c=0;c<ch;c++){
-    const data = buffer.getChannelData(c);
-    for(let i=0;i<len;i++) interleaved[i*ch+c] = data[i];
-  }
-  function floatTo16BitPCM(input){
-    const b=new DataView(new ArrayBuffer(input.length*2));
-    for(let i=0;i<input.length;i++){ let s=Math.max(-1,Math.min(1,input[i])); b.setInt16(i*2, s<0 ? s*0x8000 : s*0x7FFF, true); }
-    return b;
-  }
-  function writeWAV(samples, sampleRate, numChannels){
-    const blockAlign = numChannels*2; const byteRate = sampleRate * blockAlign; const dataLen = samples.byteLength;
-    const buffer = new ArrayBuffer(44 + dataLen); const view = new DataView(buffer);
-    function wStr(off,str){ for(let i=0;i<str.length;i++) view.setUint8(off+i, str.charCodeAt(i)); }
-    let o=0; wStr(o,'RIFF'); o+=4; view.setUint32(o, 36+dataLen, true); o+=4; wStr(o,'WAVE'); o+=4;
-    wStr(o,'fmt '); o+=4; view.setUint32(o,16,true); o+=4; view.setUint16(o,1,true); o+=2; view.setUint16(o,numChannels,true); o+=2;
-    view.setUint32(o,sampleRate,true); o+=4; view.setUint32(o,byteRate,true); o+=4; view.setUint16(o,blockAlign,true); o+=2; view.setUint16(o,16,true); o+=2;
-    wStr(o,'data'); o+=4; view.setUint32(o,dataLen,true); o+=4;
-    new Uint8Array(buffer).set(new Uint8Array(samples.buffer));
-    return new Blob([buffer], {type:'audio/wav'});
-  }
-  const pcm = floatTo16BitPCM(interleaved);
-  return writeWAV(pcm, sr, ch);
+  for(let c=0;c<ch;c++){ const data = buffer.getChannelData(c); for(let i=0;i<len;i++) interleaved[i*ch+c]=data[i]; }
+  function floatTo16BitPCM(input){ const b=new DataView(new ArrayBuffer(input.length*2)); for(let i=0;i<input.length;i++){ let s=Math.max(-1,Math.min(1,input[i])); b.setInt16(i*2, s<0?s*0x8000:s*0x7FFF, true);} return b; }
+  function writeWAV(samples, sampleRate, numChannels){ const blockAlign=numChannels*2; const byteRate=sampleRate*blockAlign; const dataLen=samples.byteLength; const buffer=new ArrayBuffer(44+dataLen); const view=new DataView(buffer); function w(o,str){ for(let i=0;i<str.length;i++) view.setUint8(o+i,str.charCodeAt(i)); }
+    let o=0; w(o,'RIFF'); o+=4; view.setUint32(o,36+dataLen,true); o+=4; w(o,'WAVE'); o+=4; w(o,'fmt '); o+=4; view.setUint32(o,16,true); o+=4; view.setUint16(o,1,true); o+=2; view.setUint16(o,numChannels,true); o+=2; view.setUint32(o,sampleRate,true); o+=4; view.setUint32(o,byteRate,true); o+=4; view.setUint16(o,blockAlign,true); o+=2; view.setUint16(o,16,true); o+=2; w(o,'data'); o+=4; view.setUint32(o,dataLen,true); o+=4; new Uint8Array(buffer).set(new Uint8Array(samples.buffer)); return new Blob([buffer],{type:'audio/wav'}); }
+  const pcm=floatTo16BitPCM(interleaved); return writeWAV(pcm, sr, ch);
 }
 
 // ===== UI glue =====
@@ -425,7 +490,7 @@ const el={
   keyGuess:document.getElementById('keyGuess'), lenInfo:document.getElementById('lenInfo'), prog:document.getElementById('prog'), log:document.getElementById('log')
 };
 
-let CURRENT={mel:null, acc:null, bpm:null, tonic:0, mode:'major'};
+let CURRENT={mel:null, acc:null, bpm:null, tonic:0, mode:'major', part:null, nodes:[]};
 
 function parsePool(text){
   return text.split(/[,\n\s]+/).map(noteToMidi).filter(x=>x===0||x>0||x===null);
@@ -458,11 +523,11 @@ el.btnGen.onclick = async () => {
 
 el.btnPlay.onclick = async () => {
   if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
-  setLog('準備播放中…若無聲音，請確認已點擊頁面且裝置未靜音。');
+  setLog('播放中…');
   await scheduleTone(CURRENT.mel, CURRENT.acc, CURRENT.bpm, el.lead.value, el.chords.value==='on', el.drums.value==='on');
 };
 
-el.btnStop.onclick = () => { Tone.Transport.stop(); Tone.Transport.cancel(0); };
+el.btnStop.onclick = () => { disposeNodes(); setLog('已停止。'); };
 
 el.btnMidi.onclick = () => {
   if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
@@ -483,7 +548,14 @@ el.btnWav.onclick = async () => {
 };
 
 // demo seed
-el.pool.value = 'E3,G#4,F#4,G3,F#4,F#3,G3,D4,'.repeat(64);
-</script>
-</body>
-</html>
+el.pool.value = 'E3,G#4,F#4,G3,F#4,F#3,G3,D4,'.repeat(32);
+
+// audio unlock + test
+el.btnAudio.onclick = async ()=>{ await unlockAudio(); };
+el.btnTest.onclick = async ()=>{
+  await unlockAudio();
+  const synth=new Tone.Synth().toDestination();
+  synth.triggerAttackRelease('A4','8n');
+  setTimeout(()=>synth.dispose&&synth.dispose(),500);
+  setLog('播放測試音 A4');
+};
