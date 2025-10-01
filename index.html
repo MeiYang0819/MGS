@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Melody Lab — 音符池 → 風格 → 自動生成（試聽＋下載）</title>
+  <title>Melody Lab</title>
   <style>
     :root{
       --bg:#0b1220; --panel:#0f1b2d; --muted:#9aa4b2; --accent:#67e8f9; --ok:#86efac; --warn:#fde68a; --danger:#fca5a5;
@@ -332,50 +332,61 @@ function buildMIDI(mel, acc, bpm, ppq=480){
 
 // ===== Tone.js playback / offline render =====
 async function scheduleTone(mel, acc, bpm, leadSel, chordsOn, drumsOn){
-  const secPerBeat = 60/bpm; const totalBeats = mel.reduce((a,[,d])=>a+d,0);
-  const now = Tone.now()+0.2; // slight delay
-  // Lead synths
+  // 必須先解鎖音訊（避免瀏覽器阻擋）
+  await Tone.start();
+  Tone.Destination.volume.value = -6; // 降低總音量避免爆音
+  const secPerBeat = 60/bpm;
+  const now = Tone.now() + 0.2; // 稍微延後，確保已解鎖
+
+  // 旋律音色（全部改為內建合成器，避免外部取樣載入失敗）
   let lead;
   switch(leadSel){
-    case 'piano': lead = new Tone.Sampler({urls:{C4:"pianoC4.mp3"}}); break; // placeholder, will fallback to synth
-    case 'guitar': lead = new Tone.AMSynth({harmonicity:1.5, modulationIndex:2}).toDestination(); break;
-    case 'violin': lead = new Tone.FMSynth({modulationIndex:8}).toDestination(); break;
-    case 'saw': lead = new Tone.Synth({oscillator:{type:'sawtooth'}}).toDestination(); break;
-    default: lead = new Tone.Synth().toDestination();
+    case 'piano':
+      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.2,sustain:0.6,release:0.4}}).toDestination();
+      break;
+    case 'guitar':
+      lead = new Tone.AMSynth({harmonicity:1.5, modulationIndex:2, oscillator:{type:'sawtooth'}}).toDestination();
+      break;
+    case 'violin':
+      lead = new Tone.FMSynth({modulationIndex:8, oscillator:{type:'sine'}}).toDestination();
+      break;
+    case 'saw':
+      lead = new Tone.Synth({oscillator:{type:'sawtooth'}}).toDestination();
+      break;
+    default:
+      lead = new Tone.Synth().toDestination();
   }
-  if(lead.toDestination===undefined) lead = new Tone.Synth().toDestination();
-  const chordSynth = new Tone.PolySynth(Tone.Synth).toDestination();
-  const bassSynth = new Tone.MonoSynth({filter: {frequency: 200}}).toDestination();
-  const kick = new Tone.MembraneSynth().toDestination();
-  const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}}).toDestination();
-  const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}}).toDestination();
 
-  // schedule melody
-  let t=0; for(const [n,d] of mel){ if(n!=null){ const freq=Tone.Frequency(n,'midi'); lead.triggerAttackRelease(freq, d*secPerBeat, now+t); } t+=d*secPerBeat; }
-  // bass
-  t=0; for(const [n,d] of acc.bass){ if(n!=null){ const freq=Tone.Frequency(Math.max(0,n-12),'midi'); bassSynth.triggerAttackRelease(freq, d*secPerBeat, now+t); } t+=d*secPerBeat; }
-  // chords
-  if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ const freqs=notes.map(nn=>Tone.Frequency(nn,'midi')); chordSynth.triggerAttackRelease(freqs, d*secPerBeat, now+t); } t+=d*secPerBeat; } }
-  // drums
-  if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1', '8n', now+t); else if(name==='snare') snare.triggerAttackRelease('8n', now+t); else hat.triggerAttackRelease('32n', now+t); } t+=secPerBeat/3; } }
+  const chordSynth = new Tone.PolySynth(Tone.Synth, {volume:-8}).toDestination();
+  const bassSynth = new Tone.MonoSynth({filter: {frequency: 200}, volume:-4}).toDestination();
+  const kick = new Tone.MembraneSynth({volume:-2}).toDestination();
+  const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-8}).toDestination();
+  const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-12}).toDestination();
 
-  await Tone.start();
-  Tone.Transport.bpm.value = bpm; // not using Transport sequence here, but keep tempo aligned
+  // 安排事件（使用絕對時間，不啟動 Transport 也能播放）
+  let t = 0; const dur = d => d*secPerBeat;
+  for(const [n,d] of mel){ if(n!=null){ lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), now+t); } t += dur(d); }
+  t=0; for(const [n,d] of acc.bass){ if(n!=null){ bassSynth.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), now+t); } t += dur(d); }
+  if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ chordSynth.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), now+t); } t += dur(d); } }
+  if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', now+t); else if(name==='snare') snare.triggerAttackRelease('8n', now+t); else hat.triggerAttackRelease('32n', now+t); } t += secPerBeat/3; } }
+
+  // 這裡不使用 Transport.start()，因為全部用絕對時間排程
 }
 
 async function renderOfflineWav(mel, acc, bpm, leadSel, chordsOn, drumsOn){
   const secPerBeat = 60/bpm; const totalSec = mel.reduce((a,[,d])=>a+d,0)*secPerBeat + 1.0;
   const buffer = await Tone.Offline(async ()=>{
-    const lead = new Tone.Synth().toDestination();
+    const lead = new Tone.Synth({oscillator:{type:'triangle'}}).toDestination();
     const chord = new Tone.PolySynth(Tone.Synth).toDestination();
     const bass = new Tone.MonoSynth({filter:{frequency:200}}).toDestination();
     const kick = new Tone.MembraneSynth().toDestination();
     const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}}).toDestination();
     const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}}).toDestination();
-    let t=0; for(const [n,d] of mel){ if(n!=null){ lead.triggerAttackRelease(Tone.Frequency(n,'midi'), d*secPerBeat, t); } t+=d*secPerBeat; }
-    t=0; for(const [n,d] of acc.bass){ if(n!=null){ bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), d*secPerBeat, t); } t+=d*secPerBeat; }
-    if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), d*secPerBeat, t); } t+=d*secPerBeat; } }
-    if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1', '8n', t); else if(name==='snare') snare.triggerAttackRelease('8n', t); else hat.triggerAttackRelease('32n', t); } t+=secPerBeat/3; } }
+    let t=0; const dur = d => d*secPerBeat;
+    for(const [n,d] of mel){ if(n!=null){ lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), t); } t += dur(d); }
+    t=0; for(const [n,d] of acc.bass){ if(n!=null){ bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), t); } t += dur(d); }
+    if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length){ chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), t); } t += dur(d); } }
+    if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', t); else if(name==='snare') snare.triggerAttackRelease('8n', t); else hat.triggerAttackRelease('32n', t); } t += secPerBeat/3; } }
   }, totalSec);
   // encode WAV
   const ch = buffer.numberOfChannels; const len = buffer.length; const sr=buffer.sampleRate;
@@ -447,6 +458,7 @@ el.btnGen.onclick = async () => {
 
 el.btnPlay.onclick = async () => {
   if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
+  setLog('準備播放中…若無聲音，請確認已點擊頁面且裝置未靜音。');
   await scheduleTone(CURRENT.mel, CURRENT.acc, CURRENT.bpm, el.lead.value, el.chords.value==='on', el.drums.value==='on');
 };
 
@@ -463,8 +475,11 @@ el.btnWav.onclick = async () => {
   if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
   setLog('離線渲染 WAV 中…');
   const wav = await renderOfflineWav(CURRENT.mel, CURRENT.acc, CURRENT.bpm, el.lead.value, el.chords.value==='on', el.drums.value==='on');
-  const a=document.createElement('a'); a.href=URL.createObjectURL(wav); a.download='melody.wav'; a.click();
-  setLog('WAV 已輸出。');
+  const url = URL.createObjectURL(wav);
+  // 讓網頁播放器也可直接播放
+  el.player.src = url;
+  const a=document.createElement('a'); a.href=url; a.download='melody.wav'; a.click();
+  setLog('WAV 已輸出並載入播放器。');
 };
 
 // demo seed
