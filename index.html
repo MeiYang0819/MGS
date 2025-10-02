@@ -3,559 +3,325 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Melody Lab — 音符池 → 風格 → 自動生成（試聽＋下載）</title>
+  <title>Melody Lab — 音符池 → 風格 → 擬真音色播放（Best-of-N）</title>
   <style>
-    :root{
-      --bg:#0b1220; --panel:#0f1b2d; --muted:#9aa4b2; --accent:#67e8f9; --ok:#86efac; --warn:#fde68a; --danger:#fca5a5;
-      --card:#0e1626; --border:#1f2a44;
-    }
-    *{box-sizing:border-box} body{margin:0;background:linear-gradient(120deg,#0b1220,#0a1326 60%,#0c142a);color:#eaf0ff;font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji"}
-    header{padding:24px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
-    header h1{font-size:22px;margin:0} header .badge{font-size:12px;color:#0b1220;background:var(--accent);padding:2px 8px;border-radius:999px}
-    main{max-width:1080px;margin:0 auto;padding:20px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+    :root{--bg:#0b1220;--panel:#0f1b2d;--muted:#9aa4b2;--accent:#67e8f9;--border:#1f2a44;--card:#0e1626}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(120deg,#0b1220,#0a1326 60%,#0c142a);color:#eaf0ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans,Arial}
+    header{padding:20px;border-bottom:1px solid var(--border)} header h1{margin:0;font-size:20px}
+    main{max-width:1100px;margin:0 auto;padding:18px;display:grid;grid-template-columns:360px 1fr;gap:16px}
     .card{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.25)}
-    .card h2{font-size:16px;margin:0;padding:14px 16px;border-bottom:1px solid var(--border);color:#cfe5ff}
-    .card .content{padding:14px 16px}
-    textarea, select, input[type="number"], input[type="text"]{width:100%;background:#0a1020;color:#eaf0ff;border:1px solid #223257;border-radius:10px;padding:10px}
-    textarea{min-height:160px;resize:vertical;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .card h2{font-size:16px;margin:0;padding:12px 14px;border-bottom:1px solid var(--border);color:#cfe5ff}
+    .card .content{padding:12px 14px}
     label{display:block;font-size:13px;color:#b9c5d6;margin:8px 0 6px}
+    textarea,select,input[type="number"],input[type="text"]{width:100%;background:#0a1020;color:#eaf0ff;border:1px solid #223257;border-radius:10px;padding:10px}
+    textarea{min-height:150px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-    .hint{color:var(--muted);font-size:12px}
-    .btn{display:inline-flex;align-items:center;gap:8px;background:#17223a;border:1px solid #2a3c66;color:#eaf0ff;padding:10px 14px;border-radius:12px;cursor:pointer}
-    .btn:hover{background:#1c2a4a}
+    .stack{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .btn{background:#17223a;border:1px solid #2a3c66;color:#eaf0ff;padding:10px 14px;border-radius:12px;cursor:pointer}
     .btn.primary{background:linear-gradient(90deg,#2563eb,#06b6d4);border-color:#1e40af}
-    .btn.primary:hover{filter:brightness(1.05)}
-    .stack{display:flex;gap:10px;flex-wrap:wrap}
-    .pill{display:inline-flex;gap:8px;align-items:center;background:#0a1020;border:1px solid #223257;border-radius:999px;padding:6px 10px}
-    .meter{height:8px;background:#0a1020;border:1px solid #223257;border-radius:999px;overflow:hidden}
-    .meter > i{display:block;height:100%;background:linear-gradient(90deg,#22d3ee,#60a5fa)}
-    .log{font-family:ui-monospace, Menlo, monospace;background:#081024;border:1px solid #15244a;border-radius:10px;padding:10px;white-space:pre-wrap;max-height:200px;overflow:auto}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .hint{color:var(--muted);font-size:12px}
+    .log{font-family:ui-monospace,Menlo,monospace;background:#081024;border:1px solid #15244a;border-radius:10px;padding:10px;white-space:pre-wrap;max-height:220px;overflow:auto}
+    .pill{display:inline-flex;gap:6px;align-items:center;background:#0a1020;border:1px solid #223257;border-radius:999px;padding:6px 10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     audio{width:100%}
-    footer{max-width:1080px;margin:20px auto;padding:0 20px 30px;color:#9fb3c8;font-size:12px}
-    .kbd{background:#0a1020;border:1px solid #223257;border-radius:6px;padding:0 6px}
   </style>
-  <!-- Tone.js for synthesis & offline rendering -->
+  <!-- 生成仍用 Tone.js（只負責節拍與工具），播放改用 Soundfont-Player（真實音色） -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
+  <script src="https://unpkg.com/soundfont-player/dist/soundfont-player.js"></script>
 </head>
 <body>
-  <header>
-    <h1>Melody Lab</h1>
-    <span class="badge">GitHub Pages 版 · 單檔</span>
-  </header>
-  <main>
-    <section class="card">
-      <h2>輸入與設定</h2>
-      <div class="content">
-        <label>音符池（逗號分隔，可 1000+、可重複；例如 E3,G#4,F#4,...）</label>
-        <textarea id="notePool" placeholder="E3,G#4,F#4,G3,F#4,F#3,G3,D4"></textarea>
-        <div class="row">
-          <div>
-            <label>曲風 Style</label>
-            <select id="style">
-              <option value="lofi">Lo-fi</option>
-              <option value="pop">Pop</option>
-              <option value="jazz">Jazz</option>
-              <option value="classical">Classical</option>
-              <option value="rock">Rock</option>
-            </select>
-          </div>
-          <div>
-            <label>BPM（留空自動）</label>
-            <input id="bpm" type="number" min="40" max="220" placeholder="自動" />
-          </div>
+<header><h1>Melody Lab（擬真音色 + Best-of-N）</h1></header>
+<main>
+  <section class="card">
+    <h2>輸入與設定</h2>
+    <div class="content">
+      <label>音符池（逗號分隔，可 1000+、可重複；如 E3,G#4,F#4,...）</label>
+      <textarea id="notePool" placeholder="E3,G#4,F#4,G3,F#4,F#3,G3,D4"></textarea>
+
+      <div class="row">
+        <div>
+          <label>曲風（Style）</label>
+          <select id="style">
+            <!-- 大量曲風 -->
+            <option>lofi</option><option>pop</option><option>rock</option><option>metal</option>
+            <option>jazz</option><option>blues</option><option>classical</option><option>country</option>
+            <option>funk</option><option>disco</option><option>rnb</option><option>hiphop</option>
+            <option>trap</option><option>edm</option><option>house</option><option>trance</option>
+            <option>dubstep</option><option>drumandbass</option><option>ambient</option><option>citypop</option>
+            <option>kpop</option><option>reggae</option><option>bossa</option><option>salsa</option>
+            <option>tango</option><option>folk</option>
+          </select>
         </div>
-        <div class="row">
-          <div>
-            <label>小節數（Bars）</label>
-            <input id="bars" type="number" min="4" max="64" value="16" />
-          </div>
-          <div>
-            <label>n-gram 階數（2-4）</label>
-            <input id="order" type="number" min="2" max="4" value="3" />
-          </div>
-        </div>
-        <div class="row3">
-          <div>
-            <label>旋律樂器</label>
-            <select id="lead">
-              <option value="piano" selected>Piano</option>
-              <option value="electric_piano">Electric Piano</option>
-              <option value="organ">Organ</option>
-              <option value="clean_guitar">Clean Guitar</option>
-              <option value="overdrive_guitar">Overdrive Guitar</option>
-              <option value="acoustic_guitar">Acoustic Guitar</option>
-              <option value="violin">Violin</option>
-              <option value="cello">Cello</option>
-              <option value="strings">Strings Pad</option>
-              <option value="flute">Flute</option>
-              <option value="clarinet">Clarinet</option>
-              <option value="sax">Saxophone</option>
-              <option value="trumpet">Trumpet</option>
-              <option value="pluck">Pluck</option>
-              <option value="bell">Bell</option>
-              <option value="pad">Synth Pad</option>
-              <option value="saw">Synth Saw</option>
-              <option value="sine">Sine (純音)</option>
-            </select>
-          </div>
-          <div>
-            <label>和弦</label>
-            <select id="chords">
-              <option value="on" selected>開</option>
-              <option value="off">關</option>
-            </select>
-          </div>
-          <div>
-            <label>鼓組</label>
-            <select id="drums">
-              <option value="on" selected>開</option>
-              <option value="off">關</option>
-            </select>
-          </div>
-        </div>
-        <div class="hint">提示：音符格式如 <code>E3</code>、<code>G#4</code>、<code>Bb3</code>。空白與換行會自動忽略。</div>
-        <div class="stack" style="margin-top:10px">
-          <button class="btn" id="btnAudio">解鎖音訊</button>
-          <button class="btn" id="btnTest">測試聲音</button>
-          <button class="btn primary" id="btnGenerate">生成</button>
-          <button class="btn" id="btnPlay">播放</button>
-          <button class="btn" id="btnStop">停止</button>
-          <button class="btn" id="btnMidi">下載 MIDI</button>
-          <button class="btn" id="btnWav">下載 WAV</button>
+        <div>
+          <label>BPM（留空自動）</label>
+          <input id="bpm" type="number" min="40" max="220" placeholder="auto">
         </div>
       </div>
-    </section>
 
-    <section class="card">
-      <h2>試聽與輸出</h2>
-      <div class="content">
-        <div class="grid">
-          <div>
-            <div class="pill"><span>推測調性</span><b id="keyGuess">—</b></div>
-          </div>
-          <div>
-            <div class="pill"><span>長度</span><b id="lenInfo">—</b></div>
-          </div>
+      <div class="row">
+        <div>
+          <label>小節數（Bars）</label>
+          <input id="bars" type="number" min="4" max="64" value="16">
         </div>
-        <div class="meter" style="margin:12px 0"><i id="prog" style="width:0%"></i></div>
-        <audio id="player" controls></audio>
-        <div style="margin-top:12px">
-          <div class="log" id="log"></div>
+        <div>
+          <label>n-gram 階數（2–4）</label>
+          <input id="order" type="number" min="2" max="4" value="3">
         </div>
       </div>
-    </section>
-  </main>
 
-  <footer>
-    快速操作：貼音符 → 選風格/樂器/速度 → 按 <span class="kbd">生成</span> → <span class="kbd">播放</span> 或 <span class="kbd">下載</span>。
-  </footer>
+      <div class="row">
+        <div>
+          <label>Best-of-N 候選</label>
+          <input id="bestN" type="number" min="1" max="64" value="16">
+          <div class="hint">一次產生 N 條候選，由評分器挑最好</div>
+        </div>
+        <div>
+          <label>啟用最佳化</label>
+          <select id="pickBest"><option value="on" selected>開</option><option value="off">關</option></select>
+        </div>
+      </div>
+
+      <div class="row3">
+        <div>
+          <label>旋律樂器（真音色）</label>
+          <select id="lead">
+            <!-- General MIDI 名稱（FluidR3_GM） -->
+            <option value="acoustic_grand_piano" selected>Piano</option>
+            <option value="electric_piano_1">Electric Piano</option>
+            <option value="drawbar_organ">Organ</option>
+            <option value="acoustic_guitar_nylon">Acoustic Guitar</option>
+            <option value="electric_guitar_clean">Clean Guitar</option>
+            <option value="overdriven_guitar">Overdrive Guitar</option>
+            <option value="distortion_guitar">Distortion Guitar</option>
+            <option value="violin">Violin</option>
+            <option value="cello">Cello</option>
+            <option value="string_ensemble_1">Strings</option>
+            <option value="synth_strings_1">Synth Strings</option>
+            <option value="flute">Flute</option>
+            <option value="clarinet">Clarinet</option>
+            <option value="tenor_sax">Sax</option>
+            <option value="trumpet">Trumpet</option>
+            <option value="synth_lead">Synth Lead</option>
+            <option value="synth_pluck">Pluck</option>
+          </select>
+        </div>
+        <div>
+          <label>和弦樂器</label>
+          <select id="chordInst">
+            <option value="acoustic_grand_piano">Piano</option>
+            <option value="electric_piano_1" selected>Electric Piano</option>
+            <option value="string_ensemble_1">Strings</option>
+            <option value="synth_strings_1">Synth Strings</option>
+            <option value="drawbar_organ">Organ</option>
+            <option value="acoustic_guitar_steel">Steel Guitar</option>
+          </select>
+        </div>
+        <div>
+          <label>貝斯樂器</label>
+          <select id="bassInst">
+            <option value="acoustic_bass">Acoustic Bass</option>
+            <option value="electric_bass_finger" selected>Electric Bass</option>
+            <option value="synth_bass_1">Synth Bass</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="stack">
+        <button class="btn primary" id="btnGenerate">生成</button>
+        <button class="btn" id="btnPlay">播放</button>
+        <button class="btn" id="btnStop">停止</button>
+        <button class="btn" id="btnMidi">下載 MIDI</button>
+        <button class="btn" id="btnWav">下載 WAV（離線渲染）</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>試聽與輸出</h2>
+    <div class="content">
+      <div class="grid">
+        <div><span class="pill">推測調性：<b id="keyGuess">—</b></span></div>
+        <div><span class="pill">長度：<b id="lenInfo">—</b></span></div>
+      </div>
+      <audio id="player" controls></audio>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+</main>
 
 <script>
-// ===== Helpers =====
-const NOTE_BASE = {C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
-const REV_NOTE = {0:"C",1:"C#",2:"D",3:"D#",4:"E",5:"F",6:"F#",7:"G",8:"G#",9:"A",10:"A#",11:"B"};
+/* ===== 生成邏輯（保留 n-gram + 伴奏 + 評分器 + Best-of-N） ===== */
+const NOTE_BASE={C:0,"C#":1,Db:1,D:2,"D#":3,Eb:3,E:4,F:5,"F#":6,Gb:6,G:7,"G#":8,Ab:8,A:9,"A#":10,Bb:10,B:11};
+const REV_NOTE={0:"C",1:"C#",2:"D",3:"D#",4:"E",5:"F",6:"F#",7:"G",8:"G#",9:"A",10:"A#",11:"B"};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
-
-function noteToMidi(s){
-  s=(s||"").trim();
-  if(!s) return null;
-  const name=s.slice(0,-1).toUpperCase();
-  const oct=parseInt(s.slice(-1),10);
-  if(!(name in NOTE_BASE) || Number.isNaN(oct)) return null;
-  return 12*(oct+1)+NOTE_BASE[name];
-}
-function midiToFreq(m){return 440*Math.pow(2,(m-69)/12)}
-function guessKey(midis){
-  const pcs = midis.filter(x=>x!=null).map(x=>x%12);
-  if(!pcs.length) return {tonic:0, mode:'major'};
-  const cnt = Array(12).fill(0); pcs.forEach(pc=>cnt[pc]++);
-  const major=t=>[t,(t+2)%12,(t+4)%12,(t+5)%12,(t+7)%12,(t+9)%12,(t+11)%12];
-  const minor=t=>[t,(t+2)%12,(t+3)%12,(t+5)%12,(t+7)%12,(t+8)%12,(t+10)%12];
-  let best={score:-1, tonic:0, mode:'major'};
-  for(const [mode,fn] of [["major",major],["minor",minor]]){
-    for(let t=0;t<12;t++){
-      const sc=fn(t); const score=sc.reduce((a,pc)=>a+cnt[pc],0);
-      if(score>best.score) best={score, tonic:t, mode};
-    }
-  }
-  return best;
-}
-function scalePCs(tonic,mode){
-  return (mode==="major"?[0,2,4,5,7,9,11]:[0,2,3,5,7,8,10]).map(i=>(tonic+i)%12)
-}
-function snapToScale(m,scale){
-  if(m==null) return null; const pc=m%12; if(scale.includes(pc)) return m;
-  const dist=s=>Math.min((pc-s+12)%12,(s-pc+12)%12);
-  const best=[...scale].sort((a,b)=>dist(a)-dist(b))[0];
-  let d=(best-pc+12)%12; if(d>6) d-=12; return m+d;
-}
-function styleDefaults(style){
-  switch(style){
-    case 'jazz': return {bpm:140, swing:true};
-    case 'lofi': return {bpm:74, swing:false};
-    case 'pop': return {bpm:110, swing:false};
-    case 'classical': return {bpm:96, swing:false};
-    case 'rock': return {bpm:132, swing:false};
-    default: return {bpm:100, swing:false};
-  }
-}
-function buildProgression(style, bars, tonic, mode){
-  let base;
-  if(style==='pop') base=[1,5,6,4];
-  else if(style==='jazz') base=[2,5,1,6];
-  else if(style==='lofi') base=[1,6,4,5];
-  else if(style==='rock') base=[1,4,5,4];
-  else base=[1,4,5,1];
-  const out=[]; while(out.length<bars) out.push(...base);
-  return out.slice(0,bars);
-}
-function chordFromDegree(tonic,mode,deg){
-  const maj=[0,2,4,5,7,9,11], minr=[0,2,3,5,7,8,10];
-  const qM=["maj","min","min","maj","maj","min","dim"], qN=["min","dim","maj","min","min","maj","maj"];
-  const base=(mode==='major'?maj:minr), q=(mode==='major'?qM:qN);
-  const root=(tonic+base[deg-1])%12; const qual=q[deg-1];
-  const third=(root+(qual==='maj'?4:3))%12; const fifth=(root+(qual==='dim'?6:7))%12; return [root,third,fifth];
-}
-
-// n-gram (order 2-4)
-function buildNgram(pool, order){
-  const seq=pool.filter(x=>x!=null);
-  if(seq.length<order+1) return new Map();
-  const T=new Map();
-  for(let i=0;i<seq.length-order;i++){
-    const key=seq.slice(i,i+order).map(x=>x%12).join(',');
-    const nxt=seq[i+order]%12;
-    if(!T.has(key)) T.set(key, new Map());
-    const m=T.get(key); m.set(nxt, (m.get(nxt)||0)+1);
-  }
-  return T;
-}
-function sampleFromNgram(T, keyArr, scale){
-  const key=keyArr.join(',');
-  if(!T.size || !T.has(key)){
-    return 60 + scale[Math.floor(Math.random()*scale.length)];
-  }
-  const m=T.get(key); const choices=[...m.keys()], weights=[...m.values()];
-  const sum=weights.reduce((a,b)=>a+b,0); let r=Math.random()*sum; let idx=0;
-  while(r>weights[idx]){r-=weights[idx++];}
-  let pc=choices[idx]; let mOut=60+pc+([0,0,0,12,-12][Math.floor(Math.random()*5)]);
-  return clamp(mOut,48,84);
-}
-
-function rhythmCell(style){
-  switch(style){
-    case 'jazz': return [0.5,0.5,1,1,1];
-    case 'pop': return [1,1,1,1];
-    case 'lofi': return [2,1,1];
-    case 'classical': return [0.5,0.5,1,1,1];
-    case 'rock': return [1,0.5,0.5,1,1];
-    default: return [1,1,1,1];
-  }
-}
-function makeForm(tag, bars){
-  const patt = (tag||'AABA').toUpperCase();
-  const unit = {AABA:['A','A','B','A'], ABAB:['A','B','A','B'], AAAA:['A','A','A','A']}[patt]||['A','A','B','A'];
-  const out=[]; while(out.length*4<bars) out.push(...unit); return out.slice(0, Math.ceil(bars/4));
-}
-
-function genMelodyPool(pool, bars, style, tonic, mode, order, form){
-  const scale=scalePCs(tonic,mode); const T=buildNgram(pool, order); const cell=rhythmCell(style);
-  const sections=makeForm(form, bars); const out=[];
-  const avail=pool.filter(x=>x!=null); let last=avail.slice(0,order).map(x=>x%12);
-  if(last.length<order){ last = [...last,2,4,5].slice(0,order); }
-  const restRate = sec => sec==='A'?0.12:0.24;
-  for(const sec of sections){
-    let beats=0;
-    while(beats<16){
-      for(const r of cell){
-        if(beats>=16) break;
-        if(Math.random()<restRate(sec)){ out.push([null,r]); beats+=r; continue; }
-        const key = last.slice(-order);
-        let m = sampleFromNgram(T, key, scale); m = snapToScale(m, scale);
-        if(out.length && out[out.length-1][0]!=null && Math.abs(m - out[out.length-1][0])>8 && sec!=='B'){
-          m = snapToScale(out[out.length-1][0] + ([ -2,-1,1,2 ][Math.floor(Math.random()*4)]), scale);
-        }
-        out.push([m,r]); beats+=r; last=[...last,m%12].slice(-order);
-      }
-    }
-  }
-  const total=bars*4; let acc=0; const trimmed=[];
-  for(const [n,d] of out){ if(acc+d>total){ trimmed.push([n, total-acc]); break;} trimmed.push([n,d]); acc+=d; }
-  return trimmed.filter(x=>x[1]>0);
-}
-
-function buildAccompaniment(style, bars, tonic, mode, baseOct=3){
-  const prog=buildProgression(style,bars,tonic,mode);
-  const chords=[], bass=[], chordHits=[], drums=[];
-  for(const deg of prog){
-    const pcs=chordFromDegree(tonic,mode,deg).map(pc=>12*(baseOct+1)+pc); chords.push(pcs);
-  }
-  for(const ch of chords){
-    const root=Math.min(...ch);
-    let seq;
-    if(style==='jazz') seq=[root,root+2,root+4,root+5];
-    else if(style==='lofi') seq=[root,null,root,null];
-    else if(style==='pop' || style==='rock') seq=[root,root,root,root];
-    else seq=[root,root+7,root,root+12];
-    seq.forEach(x=>bass.push([x,1]));
-  }
-  for(const ch of chords){
-    if(style==='lofi' || style==='pop') chordHits.push([ch,4]);
-    else if(style==='rock') chordHits.push([[ch[0],ch[2]],4]); // power-chord-ish
-    else if(style==='jazz') chordHits.push([ch,1],[[],1],[ch,1],[[],1]);
-    else chordHits.push([[ch[0]],2],[[ch[1]],1],[[ch[2]],1]);
-  }
-  for(let i=0;i<chords.length;i++){
-    for(let b=0;b<4;b++){
-      if(style==='pop' || style==='classical' || style==='rock'){
-        drums.push(['kick', b===0||b===2]); drums.push(['snare', b===1||b===3]); drums.push(['hat', true]);
-      }else if(style==='jazz'){
-        drums.push(['ride', true]); drums.push(['snare', b===1||b===3]);
-      }else{
-        drums.push(['kick', b===0]); drums.push(['snare', b===2]); drums.push(['hat', true]);
-      }
-    }
-  }
+function noteToMidi(s){s=(s||"").trim(); if(!s) return null; const name=s.slice(0,-1).toUpperCase(); const o=+s.slice(-1); if(!(name in NOTE_BASE)||Number.isNaN(o)) return null; return 12*(o+1)+NOTE_BASE[name];}
+function guessKey(midis){const pcs=midis.filter(x=>x!=null).map(x=>x%12); if(!pcs.length) return {tonic:0,mode:"major"}; const cnt=Array(12).fill(0); pcs.forEach(pc=>cnt[pc]++); const M=t=>[t,(t+2)%12,(t+4)%12,(t+5)%12,(t+7)%12,(t+9)%12,(t+11)%12]; const m=t=>[t,(t+2)%12,(t+3)%12,(t+5)%12,(t+7)%12,(t+8)%12,(t+10)%12]; let best={score:-1,tonic:0,mode:"major"}; for(const [mode,fn] of [["major",M],["minor",m]]){for(let t=0;t<12;t++){const sc=fn(t); const score=sc.reduce((a,pc)=>a+cnt[pc],0); if(score>best.score) best={score,tonic:t,mode};}} return best;}
+function scalePCs(t,mode){return (mode==="major"?[0,2,4,5,7,9,11]:[0,2,3,5,7,8,10]).map(i=>(t+i)%12)}
+function snap(m,scale){ if(m==null) return null; const pc=m%12; if(scale.includes(pc)) return m; const dist=s=>Math.min((pc-s+12)%12,(s-pc+12)%12); const best=[...scale].sort((a,b)=>dist(a)-dist(b))[0]; let d=(best-pc+12)%12; if(d>6)d-=12; return m+d;}
+function styleDefaults(s){const map={lofi:[74,false],pop:[110,false],rock:[132,false],metal:[160,false],jazz:[140,true],blues:[96,false],classical:[96,false],country:[108,false],funk:[110,false],disco:[118,false],rnb:[92,false],hiphop:[88,false],trap:[140,false],edm:[128,false],house:[124,false],trance:[138,false],dubstep:[140,false],drumandbass:[172,false],ambient:[70,false],citypop:[112,false],kpop:[120,false],reggae:[76,false],bossa:[142,false],salsa:[180,false],tango:[120,false],folk:[100,false]}; return map[s]||[100,false];}
+function chordFromDegree(tonic,mode,deg){const maj=[0,2,4,5,7,9,11],minr=[0,2,3,5,7,8,10]; const qM=["maj","min","min","maj","maj","min","dim"], qN=["min","dim","maj","min","min","maj","maj"]; const base=mode==="major"?maj:minr, q=mode==="major"?qM:qN; const root=(tonic+base[deg-1])%12; const third=(root+(q[deg-1]==="maj"?4:3))%12; const fifth=(root+(q[deg-1]==="dim"?6:7))%12; return [root,third,fifth];}
+function buildProgression(style,bars,t,mode){const table={pop:[1,5,6,4],rock:[1,4,5,4],metal:[6,5,4,5],jazz:[2,5,1,6],blues:[1,4,1,5],classical:[1,4,5,1],country:[1,4,5,1],funk:[1,4,5,4],disco:[1,5,6,4],rnb:[6,4,1,5],hiphop:[1,6,4,5],trap:[6,5,4,5],edm:[1,6,5,4],house:[1,5,6,5],trance:[1,5,6,5],dubstep:[6,5,4,5],drumandbass:[1,2,5,1],ambient:[1,1,4,5],citypop:[1,5,2,5],kpop:[1,6,4,5],reggae:[1,5,4,5],bossa:[2,5,1,6],salsa:[1,4,5,4],tango:[1,6,2,5],folk:[1,4,5,1]}; const base=table[style]||[1,4,5,1]; const out=[]; while(out.length<bars) out.push(...base); return out.slice(0,bars);}
+function buildNgram(pool,order){const s=pool.filter(x=>x!=null); if(s.length<order+1) return new Map(); const T=new Map(); for(let i=0;i<s.length-order;i++){const key=s.slice(i,i+order).map(x=>x%12).join(","); const nxt=s[i+order]%12; if(!T.has(key)) T.set(key,new Map()); const m=T.get(key); m.set(nxt,(m.get(nxt)||0)+1);} return T;}
+function sampleFromNgram(T,key,scale){const k=key.join(","); if(!T.size||!T.has(k)){return 60+scale[Math.floor(Math.random()*scale.length)];} const m=T.get(k), ch=[...m.keys()], w=[...m.values()]; const sum=w.reduce((a,b)=>a+b,0); let r=Math.random()*sum, idx=0; while(r>w[idx]){r-=w[idx++];} let pc=ch[idx]; let out=60+pc+([0,0,0,12,-12][Math.floor(Math.random()*5)]); return clamp(out,48,84);}
+function rhythmCell(style){const map={jazz:[0.5,0.5,1,1,1],pop:[1,1,1,1],rock:[1,0.5,0.5,1,1],metal:[0.5,0.5,0.5,0.5,1,1],lofi:[2,1,1],blues:[1,1,1,1],classical:[0.5,0.5,1,1,1],country:[1,1,1,1],funk:[0.5,0.5,0.5,0.5,1,1],disco:[1,1,1,1],rnb:[1,1,1,1],hiphop:[2,1,1],trap:[0.5,0.5,1,1,1],edm:[1,1,1,1],house:[1,1,1,1],trance:[0.5,0.5,1,1,1],dubstep:[0.5,0.5,1,2],drumandbass:[0.5,0.5,0.5,0.5,1],ambient:[4],citypop:[1,1,1,1],kpop:[1,1,1,1],reggae:[2,2],bossa:[1,1,1,1],salsa:[1,1,1,1],tango:[1,1,1,1],folk:[1,1,1,1]}; return map[style]||[1,1,1,1];}
+function makeForm(bars){const patt=['A','A','B','A']; const out=[]; while(out.length*4<bars) out.push(...patt); return out.slice(0,Math.ceil(bars/4));}
+function genMelodyPool(pool,bars,style,tonic,mode,order){const scale=scalePCs(tonic,mode), T=buildNgram(pool,order), cell=rhythmCell(style); const sections=makeForm(bars); const out=[]; const avail=pool.filter(x=>x!=null); let last=(avail.slice(0,order).map(x=>x%12)); if(last.length<order) last=[...last,2,4,5].slice(0,order); const restRate=sec=>sec==='A'?0.12:0.24; for(const sec of sections){let beats=0; while(beats<16){for(const r of cell){if(beats>=16) break; if(Math.random()<restRate(sec)){out.push([null,r]); beats+=r; continue;} const key=last.slice(-order); let m=sampleFromNgram(T,key,scale); m=snap(m,scale); if(out.length&&out[out.length-1][0]!=null&&Math.abs(m-out[out.length-1][0])>8&&sec!=='B'){m=snap(out[out.length-1][0]+([-2,-1,1,2][Math.floor(Math.random()*4)]),scale);} out.push([m,r]); beats+=r; last=[...last,m%12].slice(-order);} } } const total=bars*4; let acc=0; const trimmed=[]; for(const [n,d] of out){ if(acc+d>total){trimmed.push([n,total-acc]); break;} trimmed.push([n,d]); acc+=d; } return trimmed.filter(x=>x[1]>0);}
+function buildAccompaniment(style,bars,tonic,mode){const prog=buildProgression(style,bars,tonic,mode); const chords=[], bass=[]; for(const d of prog){const pcs=chordFromDegree(tonic,mode,d).map(pc=>12*(3+1)+pc); // base_oct=3
+  let root=Math.min(...pcs); let seq; if(style==='jazz') seq=[root,root+2,root+4,root+5]; else if(style==='lofi'||style==='hiphop') seq=[root,null,root,null]; else if(style==='rock'||style==='metal'||style==='edm'||style==='house'||style==='trance'||style==='disco'||style==='kpop') seq=[root,root,root,root]; else seq=[root,root+7,root,root+12]; seq.forEach(x=>bass.push([x,1])); chords.push(pcs);}
+  // chord hits
+  const chordHits=[]; for(const pcs of chords){ if(style==='lofi'||style==='pop'||style==='rock'||style==='metal'||style==='edm'||style==='house'||style==='trance'||style==='disco') chordHits.push([pcs,4]); else if(style==='jazz') chordHits.push([pcs,1],[[],1],[pcs,1],[[],1]); else chordHits.push([[pcs[0]],2],[[pcs[1]],1],[[pcs[2]],1]); }
+  // drums（用貝斯與和弦即可，瀏覽器裡鼓可用後續 SoundFont 擴充）
+  const drums=[]; // 留空，音色較真時鼓可交給 DAW 或之後加套件
   return {bass, chords:chordHits, drums};
 }
-
-// ===== MIDI writer (Type 0) =====
-function writeVarLen(x){ const bytes=[]; let buffer=x & 0x7F; while((x >>= 7)){ buffer <<= 8; buffer |= ((x & 0x7F) | 0x80);} while(true){ bytes.push(buffer & 0xFF); if(buffer & 0x80) buffer >>= 8; else break;} return new Uint8Array(bytes); }
-function midiNoteOn(ch,n,v){return new Uint8Array([0x90|ch, n&0x7F, v&0x7F])}
-function midiNoteOff(ch,n,v){return new Uint8Array([0x80|ch, n&0x7F, v&0x7F])}
-function midiProg(ch,p){return new Uint8Array([0xC0|ch, p&0x7F])}
-function tempoMeta(bpm){ const mpqn=Math.round(60000000/bpm); return new Uint8Array([0x00,0xFF,0x51,0x03,(mpqn>>16)&0xFF,(mpqn>>8)&0xFF,mpqn&0xFF]); }
-function u8cat(...arrs){ let n=0; for(const a of arrs) n+=a.length; const out=new Uint8Array(n); let o=0; for(const a of arrs){ out.set(a,o); o+=a.length;} return out; }
-function midiAddNote(track, ch, note, beats, ppq){ const on=u8cat(new Uint8Array([0x00]), midiNoteOn(ch,note,96)); const off=u8cat(writeVarLen(Math.round(beats*ppq)), midiNoteOff(ch,note,64)); return u8cat(on,off); }
-function buildMIDI(mel, acc, bpm, ppq=480){
-  let track = tempoMeta(bpm);
-  track = u8cat(track, new Uint8Array([0x00]), midiProg(0,73), new Uint8Array([0x00]), midiProg(1,34), new Uint8Array([0x00]), midiProg(2,48));
-  for(const [n,d] of mel){ if(n==null){ track=u8cat(track, writeVarLen(Math.round(d*ppq))); } else { track=u8cat(track, midiAddNote(track,0,n,d,ppq)); } }
-  for(const [n,d] of acc.bass){ if(n==null){ track=u8cat(track, writeVarLen(Math.round(d*ppq))); } else { track=u8cat(track, midiAddNote(track,1,Math.max(0,n-12),d,ppq)); } }
-  for(const [notes,d] of acc.chords){ if(!notes||!notes.length){ track=u8cat(track, writeVarLen(Math.round(d*ppq))); } else { track=u8cat(track, new Uint8Array([0x00])); for(const nn of notes){ track=u8cat(track, midiNoteOn(2,nn,72)); } track=u8cat(track, writeVarLen(Math.round(d*ppq))); for(const nn of notes){ track=u8cat(track, midiNoteOff(2,nn,64)); } } }
-  // simple drums hits
-  const DR={kick:36,snare:38,hat:42,ride:51};
-  for(const [name,on] of acc.drums){ if(on){ track=u8cat(track, new Uint8Array([0x00]), midiNoteOn(9, DR[name]||42, name==='kick'?80:60), writeVarLen(Math.round(0.1*ppq)), midiNoteOff(9, DR[name]||42, 10)); } }
-  track = u8cat(track, new Uint8Array([0x00,0xFF,0x2F,0x00]));
-  const header = u8cat(new TextEncoder().encode('MThd'), new Uint8Array([0x00,0x00,0x00,0x06, 0x00,0x00, 0x00,0x01, (ppq>>8)&0xFF, ppq&0xFF]));
-  const len = track.length; const lenBytes=new Uint8Array([ (len>>>24)&0xFF,(len>>>16)&0xFF,(len>>>8)&0xFF,len&0xFF ]);
-  const body = u8cat(new TextEncoder().encode('MTrk'), lenBytes, track);
-  return u8cat(header, body);
+// 評分器：和弦協和、步進/大跳、音域、休止比例、重複度、風格微調
+function scoreMelody(mel, acc, style){
+  let score=0; const chordTimeline=[]; let t=0; for(const [notes,d] of acc.chords){ chordTimeline.push({t, pcs:(notes||[]).map(n=>n%12), dur:d}); t+=d; }
+  const chordAt=(time)=>{ for(let i=chordTimeline.length-1;i>=0;i--){ if(time>=chordTimeline[i].t) return chordTimeline[i]; } return chordTimeline[0]||{pcs:[]}; };
+  let time=0,last=null,minP=999,maxP=-999,rests=0,leaps=0; const seen=new Map();
+  for(const [n,d] of mel){ if(n==null){rests++; time+=d; continue;} minP=Math.min(minP,n); maxP=Math.max(maxP,n); const pc=n%12; seen.set(pc,(seen.get(pc)||0)+1); const ch=chordAt(time); if(ch.pcs.length){ if(pc===ch.pcs[0]) score+=1; else if(ch.pcs.includes(pc)) score+=0.7; else score+=0.25; } else score+=0.2; if(last!=null){ const iv=Math.abs(n-last); if(iv<=2) score+=0.6; else if(iv<=5) score+=0.3; else {score-=0.4; leaps++;} } last=n; time+=d; }
+  const rng=maxP-minP; if(rng>24) score-=1; else if(rng<5) score-=0.4; else score+=0.4;
+  const restRatio=rests/Math.max(1,mel.length); if(restRatio>0.35) score-=0.5; else if(restRatio<0.05) score-=0.2; else score+=0.2;
+  const uniq = seen.size/Math.max(1,[...seen.values()].reduce((a,b)=>a+b,0)); score += (0.45 - Math.abs(uniq-0.45));
+  if(style==='jazz') score += leaps*0.05; if(style==='lofi') score -= leaps*0.05; if(style==='metal'||style==='dubstep') score += 0.1; // 微調
+  return score;
 }
 
-// ===== Tone.js playback / offline render =====
-async function unlockAudio(){
-  try{
-    await Tone.start();
-    if(Tone.context.state!=='running') await Tone.context.resume();
-    setLog('音訊已解鎖。');
-  }catch(e){ setLog('解鎖失敗：'+e.message); }
-}
+/* ===== 擬真音色播放：Soundfont-Player ===== */
+const AC = new (window.AudioContext || window.webkitAudioContext)();
+const SF_BASE = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM"; // 公開 SoundFont CDN
+async function loadInstrument(name){ return await Soundfont.instrument(AC, name, { soundfont: 'FluidR3_GM', nameToUrl: (i, sf, ext)=>`${SF_BASE}/${i}-${ext}.js` }); }
+// 快取
+const INST_CACHE = new Map();
+async function getInst(name){ if(INST_CACHE.has(name)) return INST_CACHE.get(name); const inst = await loadInstrument(name); INST_CACHE.set(name, inst); return inst; }
 
-function disposeNodes(){
-  if(CURRENT.part){ try{ CURRENT.part.stop(); CURRENT.part.dispose(); }catch(e){} CURRENT.part=null; }
-  if(CURRENT.nodes){ CURRENT.nodes.forEach(n=>{try{n.dispose&&n.dispose()}catch(e){}}); CURRENT.nodes=[]; }
-  Tone.Transport.stop(); Tone.Transport.cancel();
-}
-
-function buildTransportPlayback(mel, acc, bpm, leadSel, chordsOn, drumsOn){
-  disposeNodes();
-  Tone.Transport.bpm.value = bpm;
-  const nodes = [];
-  let lead;
-  switch(leadSel){
-    case 'piano':
-      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.25,sustain:0.6,release:0.5}});
-      break;
-    case 'electric_piano':
-      lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.005,decay:0.3,sustain:0.5,release:0.8}});
-      break;
-    case 'organ':
-      lead = new Tone.Synth({oscillator:{type:'square'}, envelope:{attack:0.02,decay:0.1,sustain:0.9,release:0.2}});
-      break;
-    case 'clean_guitar':
-      lead = new Tone.AMSynth({harmonicity:1.5, modulationIndex:3, oscillator:{type:'sawtooth'}, envelope:{attack:0.01,decay:0.2,sustain:0.4,release:0.7}});
-      break;
-    case 'overdrive_guitar':
-      lead = new Tone.DuoSynth({harmonicity:1.01, voice0:{oscillator:{type:'sawtooth'}}, voice1:{oscillator:{type:'square'}}, vibratoAmount:0.1});
-      break;
-    case 'acoustic_guitar':
-      lead = new Tone.PluckSynth();
-      break;
-    case 'violin':
-      lead = new Tone.FMSynth({modulationIndex:10, oscillator:{type:'sine'}, envelope:{attack:0.05,decay:0.2,sustain:0.8,release:0.6}});
-      break;
-    case 'cello':
-      lead = new Tone.FMSynth({modulationIndex:12, oscillator:{type:'sine'}, envelope:{attack:0.03,decay:0.3,sustain:0.85,release:0.8}});
-      break;
-    case 'strings':
-      lead = new Tone.Synth({oscillator:{type:'sawtooth'}, envelope:{attack:0.2,decay:0.5,sustain:0.7,release:1.2}});
-      break;
-    case 'flute':
-      lead = new Tone.Synth({oscillator:{type:'sine'}, envelope:{attack:0.02,decay:0.2,sustain:0.7,release:0.5}});
-      break;
-    case 'clarinet':
-      lead = new Tone.Synth({oscillator:{type:'square'}, envelope:{attack:0.01,decay:0.2,sustain:0.7,release:0.5}});
-      break;
-    case 'sax':
-      lead = new Tone.FMSynth({harmonicity:2, modulationIndex:2, envelope:{attack:0.01,decay:0.2,sustain:0.6,release:0.5}});
-      break;
-    case 'trumpet':
-      lead = new Tone.FMSynth({harmonicity:1.5, modulationIndex:4, envelope:{attack:0.01,decay:0.15,sustain:0.5,release:0.4}});
-      break;
-    case 'pluck':
-      lead = new Tone.PluckSynth();
-      break;
-    case 'bell':
-      lead = new Tone.MetalSynth({frequency:440, envelope:{attack:0.001,decay:1.2,release:0.2}, harmonicity:5, resonance:400});
-      break;
-    case 'pad':
-      lead = new Tone.Synth({oscillator:{type:'sawtooth'}, envelope:{attack:0.3,decay:0.5,sustain:0.8,release:1.5}});
-      break;
-    case 'saw':
-      lead = new Tone.Synth({oscillator:{type:'sawtooth'}});
-      break;
-    case 'sine':
-      lead = new Tone.Synth({oscillator:{type:'sine'}});
-      break;
-    default: lead = new Tone.Synth();
-  }
-  lead.volume.value = -6; lead.toDestination(); nodes.push(lead);
-  const chordSynth = new Tone.PolySynth(Tone.Synth, {volume:-10}).toDestination(); nodes.push(chordSynth);
-  const bassSynth = new Tone.MonoSynth({filter:{frequency: 200}, volume:-6}).toDestination(); nodes.push(bassSynth);
-  const kick = new Tone.MembraneSynth({volume:-2}).toDestination(); nodes.push(kick);
-  const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-12}).toDestination(); nodes.push(snare);
-  const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-16}).toDestination(); nodes.push(hat);
-
-  const secPerBeat = 60/bpm;
-  const events = [];
-  let t=0; for(const [n,d] of mel){ events.push({time:t, type:'mel', n, d: d*secPerBeat}); t+=d*secPerBeat; }
-  t=0; for(const [n,d] of acc.bass){ events.push({time:t, type:'bass', n: n!=null?Math.max(0,n-12):null, d: d*secPerBeat}); t+=d*secPerBeat; }
-  if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ events.push({time:t, type:'chord', notes, d:d*secPerBeat}); t+=d*secPerBeat; } }
-  if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ events.push({time:t, type:name, d:secPerBeat/3}); } t+=secPerBeat/3; } }
-
-  const part = new Tone.Part((time, ev)=>{
-    switch(ev.type){
-      case 'mel': if(ev.n!=null) lead.triggerAttackRelease(Tone.Frequency(ev.n,'midi'), ev.d, time); break;
-      case 'bass': if(ev.n!=null) bassSynth.triggerAttackRelease(Tone.Frequency(ev.n,'midi'), ev.d, time); break;
-      case 'chord': if(ev.notes && ev.notes.length) chordSynth.triggerAttackRelease(ev.notes.map(nn=>Tone.Frequency(nn,'midi')), ev.d, time); break;
-      case 'kick': kick.triggerAttackRelease('C1','8n', time); break;
-      case 'snare': snare.triggerAttackRelease('8n', time); break;
-      case 'hat': hat.triggerAttackRelease('32n', time); break;
-    }
-  }, events).start(0);
-
-  CURRENT.part = part; CURRENT.nodes = nodes;
-}
-
-async function scheduleTone(mel, acc, bpm, leadSel, chordsOn, drumsOn){
-  await unlockAudio();
-  buildTransportPlayback(mel, acc, bpm, leadSel, chordsOn, drumsOn);
-  Tone.Transport.start();
-}
-
-async function renderOfflineWav(mel, acc, bpm, leadSel, chordsOn, drumsOn){
-  const secPerBeat = 60/bpm; const totalSec = mel.reduce((a,[,d])=>a+d,0)*secPerBeat + 1.0;
-  const buffer = await Tone.Offline(async ()=>{
-    const lead = new Tone.Synth({oscillator:{type:'triangle'}, envelope:{attack:0.003,decay:0.2,sustain:0.6,release:0.4}}).toDestination();
-    const chord = new Tone.PolySynth(Tone.Synth, {volume:-10}).toDestination();
-    const bass = new Tone.MonoSynth({filter:{frequency:200}, volume:-6}).toDestination();
-    const kick = new Tone.MembraneSynth({volume:-2}).toDestination();
-    const snare = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.2,sustain:0}, volume:-12}).toDestination();
-    const hat = new Tone.NoiseSynth({envelope:{attack:0.001,decay:0.05,sustain:0}, volume:-16}).toDestination();
-    let t=0; const dur=d=>d*secPerBeat;
-    for(const [n,d] of mel){ if(n!=null) lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), t); t+=dur(d); }
-    t=0; for(const [n,d] of acc.bass){ if(n!=null) bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), t); t+=dur(d); }
-    if(chordsOn){ t=0; for(const [notes,d] of acc.chords){ if(notes && notes.length) chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), t); t+=dur(d); } }
-    if(drumsOn){ t=0; for(const [name,on] of acc.drums){ if(on){ if(name==='kick') kick.triggerAttackRelease('C1','8n', t); else if(name==='snare') snare.triggerAttackRelease('8n', t); else hat.triggerAttackRelease('32n', t); } t+=secPerBeat/3; } }
-  }, totalSec);
-  const ch = buffer.numberOfChannels; const len = buffer.length; const sr=buffer.sampleRate;
-  const interleaved = new Float32Array(len*ch);
-  for(let c=0;c<ch;c++){ const data = buffer.getChannelData(c); for(let i=0;i<len;i++) interleaved[i*ch+c]=data[i]; }
-  function floatTo16BitPCM(input){ const b=new DataView(new ArrayBuffer(input.length*2)); for(let i=0;i<input.length;i++){ let s=Math.max(-1,Math.min(1,input[i])); b.setInt16(i*2, s<0?s*0x8000:s*0x7FFF, true);} return b; }
-  function writeWAV(samples, sampleRate, numChannels){ const blockAlign=numChannels*2; const byteRate=sampleRate*blockAlign; const dataLen=samples.byteLength; const buffer=new ArrayBuffer(44+dataLen); const view=new DataView(buffer); function w(o,str){ for(let i=0;i<str.length;i++) view.setUint8(o+i,str.charCodeAt(i)); }
-    let o=0; w(o,'RIFF'); o+=4; view.setUint32(o,36+dataLen,true); o+=4; w(o,'WAVE'); o+=4; w(o,'fmt '); o+=4; view.setUint32(o,16,true); o+=4; view.setUint16(o,1,true); o+=2; view.setUint16(o,numChannels,true); o+=2; view.setUint32(o,sampleRate,true); o+=4; view.setUint32(o,byteRate,true); o+=4; view.setUint16(o,blockAlign,true); o+=2; view.setUint16(o,16,true); o+=2; w(o,'data'); o+=4; view.setUint32(o,dataLen,true); o+=4; new Uint8Array(buffer).set(new Uint8Array(samples.buffer)); return new Blob([buffer],{type:'audio/wav'}); }
-  const pcm=floatTo16BitPCM(interleaved); return writeWAV(pcm, sr, ch);
-}
-
-// ===== UI glue =====
+/* ===== UI & 控制 ===== */
 const el={
-  pool: document.getElementById('notePool'), style:document.getElementById('style'), bpm:document.getElementById('bpm'),
-  bars:document.getElementById('bars'), order:document.getElementById('order'), lead:document.getElementById('lead'),
-  chords:document.getElementById('chords'), drums:document.getElementById('drums'),
+  pool:document.getElementById('notePool'), style:document.getElementById('style'), bpm:document.getElementById('bpm'),
+  bars:document.getElementById('bars'), order:document.getElementById('order'),
+  bestN:document.getElementById('bestN'), pickBest:document.getElementById('pickBest'),
+  lead:document.getElementById('lead'), chordInst:document.getElementById('chordInst'), bassInst:document.getElementById('bassInst'),
   btnGen:document.getElementById('btnGenerate'), btnPlay:document.getElementById('btnPlay'), btnStop:document.getElementById('btnStop'),
-  btnMidi:document.getElementById('btnMidi'), btnWav:document.getElementById('btnWav'), player:document.getElementById('player'),
-  keyGuess:document.getElementById('keyGuess'), lenInfo:document.getElementById('lenInfo'), prog:document.getElementById('prog'), log:document.getElementById('log')
+  btnMidi:document.getElementById('btnMidi'), btnWav:document.getElementById('btnWav'),
+  keyGuess:document.getElementById('keyGuess'), lenInfo:document.getElementById('lenInfo'), player:document.getElementById('player'), log:document.getElementById('log')
 };
+let CURRENT={mel:null, acc:null, bpm:null, tonic:0, mode:'major'};
 
-let CURRENT={mel:null, acc:null, bpm:null, tonic:0, mode:'major', part:null, nodes:[]};
-
-function parsePool(text){
-  return text.split(/[,\n\s]+/).map(noteToMidi).filter(x=>x===0||x>0||x===null);
-}
-function setLog(msg){ el.log.textContent = msg; }
-function setProg(p){ el.prog.style.width = `${p}%`; }
+function parsePool(text){ return text.split(/[,\n\s]+/).map(noteToMidi).filter(x=>x===0||x>0||x===null); }
+function setLog(s){ el.log.textContent = s; }
 
 el.btnGen.onclick = async () => {
   try{
-    setProg(5);
     const pool = parsePool(el.pool.value);
     if(pool.length<8){ setLog('音符太少，請至少提供 8 個。'); return; }
     const k = guessKey(pool.filter(x=>x!=null));
-    const def = styleDefaults(el.style.value);
-    const bpm = el.bpm.value? clamp(parseInt(el.bpm.value,10),40,220): def.bpm;
+    const [defBpm] = styleDefaults(el.style.value);
+    const bpm = el.bpm.value ? clamp(parseInt(el.bpm.value,10),40,220) : defBpm;
     const bars = clamp(parseInt(el.bars.value,10),4,64);
     const order = clamp(parseInt(el.order.value,10),2,4);
+    const bestN = clamp(parseInt(el.bestN.value||'1',10),1,64);
+    const pickBest = el.pickBest.value==='on';
+
     el.keyGuess.textContent = `${REV_NOTE[k.tonic]} ${k.mode}`;
-    setProg(12);
-    const melody = genMelodyPool(pool, bars, el.style.value, k.tonic, k.mode, order, 'AABA');
-    setProg(40);
-    const acc = buildAccompaniment(el.style.value, bars, k.tonic, k.mode, 3);
-    setProg(65);
-    CURRENT={mel:melody, acc, bpm, tonic:k.tonic, mode:k.mode};
-    el.lenInfo.textContent = `${bars} bars · ${(melody.reduce((a,[,d])=>a+d,0)).toFixed(1)} beats`;
-    setLog(`生成完成：style=${el.style.value}, bpm=${bpm}, key=${REV_NOTE[k.tonic]} ${k.mode}, notes=${pool.length}`);
-    setProg(100);
-  }catch(e){ console.error(e); setLog('發生錯誤：'+e.message); }
+
+    let bestMel=null,bestAcc=null,bestScore=-1e9,loops= pickBest? bestN:1;
+    for(let i=0;i<loops;i++){
+      const mel = genMelodyPool(pool, bars, el.style.value, k.tonic, k.mode, order);
+      const acc = buildAccompaniment(el.style.value, bars, k.tonic, k.mode);
+      const s = scoreMelody(mel, acc, el.style.value);
+      if(s>bestScore){ bestScore=s; bestMel=mel; bestAcc=acc; }
+    }
+    CURRENT={mel:bestMel, acc:bestAcc, bpm, tonic:k.tonic, mode:k.mode};
+    el.lenInfo.textContent = `${bars} bars · ${(bestMel.reduce((a,[,d])=>a+d,0)).toFixed(1)} beats · score ${bestScore.toFixed(2)}`;
+    setLog(`生成完成：style=${el.style.value}, bpm=${bpm}, key=${REV_NOTE[k.tonic]} ${k.mode}, Best-of-${loops}，score=${bestScore.toFixed(2)}`);
+  }catch(e){ setLog('錯誤：'+e.message); console.error(e); }
 };
 
-el.btnPlay.onclick = async () => {
-  if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
-  setLog('播放中…');
-  await scheduleTone(CURRENT.mel, CURRENT.acc, CURRENT.bpm, el.lead.value, el.chords.value==='on', el.drums.value==='on');
-};
-
-el.btnStop.onclick = () => { disposeNodes(); setLog('已停止。'); };
+// 將 MIDI 下載（簡易單軌化，和之前一樣）
+function buildMIDI(mel, acc, bpm, ppq=480){
+  function varlen(x){const b=x&0x7F;let out=[b];x>>=7;while(x>0){out.unshift((x&0x7F)|0x80);x>>=7}return new Uint8Array(out);}
+  const on=(ch,n,v)=>new Uint8Array([0x90|ch,n&0x7F,v&0x7F]), off=(ch,n,v)=>new Uint8Array([0x80|ch,n&0x7F,v&0x7F]), pc=(ch,p)=>new Uint8Array([0xC0|ch,p&0x7F]);
+  const tempo=(bpm)=>{const mpqn=Math.round(60000000/bpm);return new Uint8Array([0,0xFF,0x51,0x03,(mpqn>>16)&255,(mpqn>>8)&255,mpqn&255]);};
+  const cat=(...arr)=>{let n=0;arr.forEach(a=>n+=a.length);const u=new Uint8Array(n);let o=0;arr.forEach(a=>{u.set(a,o);o+=a.length});return u;}
+  let trk=tempo(bpm); trk=cat(trk,new Uint8Array([0]),pc(0,73),new Uint8Array([0]),pc(1,34),new Uint8Array([0]),pc(2,48));
+  const add=(ch,n,beats,vel=90)=>cat(new Uint8Array([0]),on(ch,n,vel),varlen(Math.round(beats*ppq)),off(ch,n,64));
+  for(const [n,d] of mel){ if(n==null) trk=cat(trk,varlen(Math.round(d*ppq))); else trk=cat(trk,add(0,n,d,96)); }
+  for(const [n,d] of acc.bass){ if(n==null) trk=cat(trk,varlen(Math.round(d*ppq))); else trk=cat(trk,add(1,Math.max(0,n-12),d,88)); }
+  for(const [notes,d] of acc.chords){ if(!notes||!notes.length) {trk=cat(trk,varlen(Math.round(d*ppq)));}
+    else {trk=cat(trk,new Uint8Array([0])); notes.forEach(nn=>trk=cat(trk,on(2,nn,72))); trk=cat(trk,varlen(Math.round(d*ppq))); notes.forEach(nn=>trk=cat(trk,off(2,nn,64)));}}
+  trk=cat(trk,new Uint8Array([0,0xFF,0x2F,0x00]));
+  const hdr=cat(new TextEncoder().encode('MThd'),new Uint8Array([0,0,0,6, 0,0, 0,1, (ppq>>8)&255, ppq&255]));
+  const len=new Uint8Array([ (trk.length>>>24)&255,(trk.length>>>16)&255,(trk.length>>>8)&255,trk.length&255 ]);
+  const body=cat(new TextEncoder().encode('MTrk'),len,trk);
+  return cat(hdr,body);
+}
 
 el.btnMidi.onclick = () => {
-  if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
-  const bytes = buildMIDI(CURRENT.mel, CURRENT.acc, CURRENT.bpm);
-  const blob = new Blob([bytes], {type:'audio/midi'});
+  if(!CURRENT.mel){ setLog('請先生成。'); return; }
+  const bytes=buildMIDI(CURRENT.mel,CURRENT.acc,CURRENT.bpm);
+  const blob=new Blob([bytes],{type:'audio/midi'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='melody.mid'; a.click();
 };
 
+// 擬真播放：以 Soundfont-Player 安排相對時間
+let playing=false, scheduled=[];
+el.btnPlay.onclick = async () => {
+  if(!CURRENT.mel){ setLog('請先生成。'); return; }
+  // 某些瀏覽器需使用者互動觸發：在這個 handler 內 resume 即可（無需額外按鈕）
+  if(AC.state!=="running"){ await AC.resume(); }
+  // 載入樂器
+  const lead = await getInst(el.lead.value);
+  const chordI = await getInst(el.chordInst.value);
+  const bassI = await getInst(el.bassInst.value);
+  const secPerBeat = 60/CURRENT.bpm;
+  const t0 = AC.currentTime + 0.1;
+  // 清除上次
+  scheduled.forEach(node=>{try{node.stop&&node.stop();}catch(e){}});
+  scheduled = [];
+  // 排旋律
+  let t=0; for(const [n,d] of CURRENT.mel){ if(n!=null){ scheduled.push(lead.play(n, t0+t, {gain:0.9, duration:d*secPerBeat})); } t += d*secPerBeat; }
+  // 排貝斯
+  t=0; for(const [n,d] of CURRENT.acc.bass){ if(n!=null){ scheduled.push(bassI.play(Math.max(0,n-12), t0+t, {gain:0.7, duration:d*secPerBeat})); } t += d*secPerBeat; }
+  // 排和弦
+  t=0; for(const [notes,d] of CURRENT.acc.chords){ if(notes && notes.length){ notes.forEach(nn=>scheduled.push(chordI.play(nn, t0+t, {gain:0.6, duration:d*secPerBeat}))); } t += d*secPerBeat; }
+  playing=true; setLog('播放中（擬真音色）…');
+};
+
+el.btnStop.onclick = () => {
+  scheduled.forEach(node=>{try{node.stop&&node.stop();}catch(e){}});
+  scheduled=[]; playing=false; setLog('已停止。');
+};
+
+// WAV（離線渲染）：沿用 Tone.Offline 合成（合成音色），若要真實音色渲染建議用 Actions + fluidsynth（我可幫你加）
 el.btnWav.onclick = async () => {
-  if(!CURRENT.mel){ setLog('請先按「生成」。'); return; }
-  setLog('離線渲染 WAV 中…');
-  const wav = await renderOfflineWav(CURRENT.mel, CURRENT.acc, CURRENT.bpm, el.lead.value, el.chords.value==='on', el.drums.value==='on');
-  const url = URL.createObjectURL(wav);
-  // 讓網頁播放器也可直接播放
-  el.player.src = url;
+  if(!CURRENT.mel){ setLog('請先生成。'); return; }
+  setLog('離線渲染中…（頁面使用合成器渲染；若要真實音色，建議在 GitHub Actions 用 fluidsynth 由 MIDI 轉 WAV）');
+  const secPerBeat = 60/CURRENT.bpm, totalSec = CURRENT.mel.reduce((a,[,d])=>a+d,0)*secPerBeat + 1.0;
+  const buffer = await Tone.Offline(async ()=>{
+    const lead = new Tone.Synth({oscillator:{type:'triangle'}}).toDestination();
+    const chord = new Tone.PolySynth(Tone.Synth).toDestination();
+    const bass  = new Tone.MonoSynth({filter:{frequency:200}}).toDestination();
+    let tt=0; const dur=d=>d*secPerBeat;
+    for(const [n,d] of CURRENT.mel){ if(n!=null) lead.triggerAttackRelease(Tone.Frequency(n,'midi'), dur(d), tt); tt+=dur(d); }
+    tt=0; for(const [n,d] of CURRENT.acc.bass){ if(n!=null) bass.triggerAttackRelease(Tone.Frequency(Math.max(0,n-12),'midi'), dur(d), tt); tt+=dur(d); }
+    tt=0; for(const [notes,d] of CURRENT.acc.chords){ if(notes&&notes.length) chord.triggerAttackRelease(notes.map(nn=>Tone.Frequency(nn,'midi')), dur(d), tt); tt+=dur(d); }
+  }, totalSec);
+  // 轉 WAV 並提供下載 + 頁面播放
+  const ch=buffer.numberOfChannels, len=buffer.length, sr=buffer.sampleRate;
+  const interleaved = new Float32Array(len*ch);
+  for(let c=0;c<ch;c++){ const data=buffer.getChannelData(c); for(let i=0;i<len;i++) interleaved[i*ch+c]=data[i]; }
+  function floatTo16BitPCM(input){ const dv=new DataView(new ArrayBuffer(input.length*2)); for(let i=0;i<input.length;i++){ let s=Math.max(-1,Math.min(1,input[i])); dv.setInt16(i*2, s<0?s*0x8000:s*0x7FFF, true);} return dv;}
+  function writeWAV(samples,sampleRate,numChannels){ const blockAlign=numChannels*2, byteRate=sampleRate*blockAlign, dataLen=samples.byteLength; const buf=new ArrayBuffer(44+dataLen), v=new DataView(buf); const w=(o,s)=>{for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i));};
+    let o=0; w(o,'RIFF'); o+=4; v.setUint32(o,36+dataLen,true); o+=4; w(o,'WAVE'); o+=4; w(o,'fmt '); o+=4; v.setUint32(o,16,true); o+=4; v.setUint16(o,1,true); o+=2; v.setUint16(o,numChannels,true); o+=2; v.setUint32(o,sampleRate,true); o+=4; v.setUint32(o,byteRate,true); o+=4; v.setUint16(o,blockAlign,true); o+=2; v.setUint16(o,16,true); o+=2; w(o,'data'); o+=4; v.setUint32(o,dataLen,true); o+=4; new Uint8Array(buf).set(new Uint8Array(samples.buffer)); return new Blob([buf],{type:'audio/wav'});}
+  const wav=writeWAV(floatTo16BitPCM(interleaved), sr, ch);
+  const url=URL.createObjectURL(wav); el.player.src=url;
   const a=document.createElement('a'); a.href=url; a.download='melody.wav'; a.click();
   setLog('WAV 已輸出並載入播放器。');
 };
 
-// demo seed
-el.pool.value = 'E3,G#4,F#4,G3,F#4,F#3,G3,D4,'.repeat(32);
-
-// audio unlock + test
-el.btnAudio.onclick = async ()=>{ await unlockAudio(); };
-el.btnTest.onclick = async ()=>{
-  await unlockAudio();
-  const synth=new Tone.Synth().toDestination();
-  synth.triggerAttackRelease('A4','8n');
-  setTimeout(()=>synth.dispose&&synth.dispose(),500);
-  setLog('播放測試音 A4');
-};
+// Demo：預填 1000 音左右
+el.pool.value='E3,G#4,F#4,G3,F#4,F#3,G3,D4,'.repeat(125);
+</script>
+</body>
+</html>
