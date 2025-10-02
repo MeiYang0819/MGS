@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Melody Studio — 主旋律池 喵喵 隨便測試中 喵喵阿</title>
+  <title>Melody Studio — 主旋律池 → 風格 → 候選評分（Top3）＋真音色混音</title>
   <style>
     /* ----------- 基礎樣式（深色主題） ----------- */
     :root{--bg:#0b1220;--card:#0e1626;--muted:#9aa4b2;--border:#1f2a44;--accent:#67e8f9}
@@ -37,7 +37,7 @@
     .log{font-family:ui-monospace,Menlo,monospace;background:#081024;border:1px solid #15244a;border-radius:10px;
          padding:10px;white-space:pre-wrap;max-height:220px;overflow:auto}
   </style>
-  <!-- Tone.js：僅用於一些工具（離線渲染已移除）；真音色播放用 Soundfont-Player（FluidR3_GM） -->
+  <!-- Tone.js：僅用於一些工具；真音色用 Soundfont-Player（FluidR3_GM） -->
   <script src="https://unpkg.com/tone@14.8.49/build/Tone.js"></script>
   <script src="https://unpkg.com/soundfont-player/dist/soundfont-player.js"></script>
 </head>
@@ -412,17 +412,46 @@ const el = {
   btnStems: document.getElementById('btnStems'),
   player: document.getElementById('player'),
   log: document.getElementById('log'),
+  mixer: document.getElementById('mixer'),
   keyGuess: document.getElementById('keyGuess'),
-  mixer: document.getElementById('mixer')
 };
-
 function setLog(s){ el.log.textContent = s; }
 
 /* 音色載入（真音色 SoundFont） */
 const AC = new (window.AudioContext || window.webkitAudioContext)();
 const SF_BASE = "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM";
 async function loadInstrument(name){ return await Soundfont.instrument(AC, name, { soundfont:'FluidR3_GM', nameToUrl:(i,sf,ext)=>`${SF_BASE}/${i}-${ext}.js` }); }
-const INST_CACHE=new Map(); async function getInst(name){ if(INST_CACHE.has(name)) return INST_CACHE.get(name); const inst=await loadInstrument(name); INST_CACHE.set(name,inst); return inst; }
+const INST_CACHE=new Map();
+async function getInst(name){
+  if(INST_CACHE.has(name)) return INST_CACHE.get(name);
+  const inst=await loadInstrument(name);
+  INST_CACHE.set(name,inst);
+  return inst;
+}
+
+/* ---- 熱修：音訊解鎖（使用者任意互動後解鎖） ---- */
+let AUDIO_READY = false;
+async function unlockAudio() {
+  try {
+    if (AUDIO_READY) return;
+    await AC.resume();
+    // 送一個幾乎無聲的極短脈衝，確保某些瀏覽器真的開始輸出
+    const osc = AC.createOscillator();
+    const g = AC.createGain();
+    g.gain.value = 0.0001;
+    osc.connect(g).connect(AC.destination);
+    osc.start();
+    osc.stop(AC.currentTime + 0.02);
+    AUDIO_READY = (AC.state === "running");
+    if (AUDIO_READY) setLog("Audio 已解鎖，可以播放。");
+  } catch (e) {
+    setLog("Audio 解鎖失敗：" + e.message);
+  }
+}
+// 任一互動即解鎖（只跑一次）
+["click","touchstart","keydown"].forEach(ev=>{
+  window.addEventListener(ev, unlockAudio, { once:true, passive:true });
+});
 
 /* 候選與目前選用 */
 let CANDIDATES = []; // [{mel,acc,score}]
@@ -515,7 +544,6 @@ function renderCandidates(){
     };
   });
 }
-
 function useCandidate(idx, bpm, tonic, mode){
   CURRENT = { mel:CANDIDATES[idx].mel, acc:CANDIDATES[idx].acc, bpm, tonic, mode, chosenIndex:idx };
   el.usingCand.textContent = `#${idx+1}`;
@@ -556,120 +584,134 @@ function makeMixerUI(){
 makeMixerUI();
 
 /* =========================================================
-   五、播放（含：片段啟用、空間感 Reverb）
+   五、播放（含：片段啟用、空間感 Reverb、音色預載入、解鎖）
    ========================================================= */
 async function playWithMix(candidate){
-  if(!candidate) candidate = CURRENT;
-  if(!candidate || !candidate.mel){ setLog("請先生成候選。"); return; }
-  if(AC.state!=="running") await AC.resume();
+  try{
+    if(!candidate) candidate = CURRENT;
+    if(!candidate || !candidate.mel){ setLog("請先按『生成候選』。"); return; }
 
-  // 停止前次
-  scheduled.forEach(n=>{try{n.stop&&n.stop()}catch(e){}});
-  scheduled=[];
+    // 先解鎖音訊（行動裝置/某些桌機必須）
+    await unlockAudio();
+    if(AC.state!=="running"){ setLog("瀏覽器尚未允許音訊播放，請點一下頁面任意處後再按播放。"); return; }
 
-  const secPerBeat = 60 / CURRENT.bpm;
-  const t0 = AC.currentTime + 0.1;
+    setLog("載入音色中…（首次載入會花幾秒）");
+    // 預載三個主樂器（避免未載完就播放導致無聲）
+    const leadPre  = await getInst(el.instLead.value);
+    const chordPre = await getInst(el.instChord.value);
+    const bassPre  = await getInst(el.instBass.value);
 
-  // ---- Master & 簡易 Reverb（FDN-like） ----
-  const master = AC.createGain(); master.gain.value = parseFloat(el.masterGain.value||"0.9");
-  const reverbIn = AC.createGain(); // send 匯入
-  const reverbWet = AC.createGain(); const reverbDry = AC.createGain();
-  reverbWet.gain.value = 0.5 * MIXER.reverb.roomSize;
-  reverbDry.gain.value = 1.0;
+    // 停止前次
+    scheduled.forEach(n=>{try{n.stop&&n.stop()}catch(e){}});
+    scheduled=[];
 
-  // 4 條延遲交錯回授，模擬小房間
-  const d1=AC.createDelay(0.5), d2=AC.createDelay(0.5), d3=AC.createDelay(0.5), d4=AC.createDelay(0.5);
-  d1.delayTime.value = 0.030 + 0.120*MIXER.reverb.roomSize;
-  d2.delayTime.value = 0.037 + 0.145*MIXER.reverb.roomSize;
-  d3.delayTime.value = 0.041 + 0.160*MIXER.reverb.roomSize;
-  d4.delayTime.value = 0.053 + 0.180*MIXER.reverb.roomSize;
-  const g1=AC.createGain(), g2=AC.createGain(), g3=AC.createGain(), g4=AC.createGain();
-  g1.gain.value=g2.gain.value=g3.gain.value=g4.gain.value=0.35+0.35*MIXER.reverb.roomSize;
+    const secPerBeat = 60 / CURRENT.bpm;
+    const t0 = AC.currentTime + 0.1;
 
-  reverbIn.connect(d1); reverbIn.connect(d2); reverbIn.connect(d3); reverbIn.connect(d4);
-  d1.connect(g2).connect(d2); d2.connect(g3).connect(d3); d3.connect(g4).connect(d4); d4.connect(g1).connect(d1);
-  d1.connect(reverbWet); d2.connect(reverbWet); d3.connect(reverbWet); d4.connect(reverbWet);
+    // ---- Master & 簡易 Reverb（FDN-like） ----
+    const master = AC.createGain(); master.gain.value = parseFloat(el.masterGain.value||"0.9");
+    const reverbIn = AC.createGain(); // send 匯入
+    const reverbWet = AC.createGain(); const reverbDry = AC.createGain();
+    reverbWet.gain.value = 0.5 * MIXER.reverb.roomSize;
+    reverbDry.gain.value = 1.0;
 
-  master.connect(AC.destination); reverbWet.connect(AC.destination);
-  MIXER.masterGainNode = master;
+    // 4 條延遲交錯回授，模擬小房間
+    const d1=AC.createDelay(0.5), d2=AC.createDelay(0.5), d3=AC.createDelay(0.5), d4=AC.createDelay(0.5);
+    d1.delayTime.value = 0.030 + 0.120*MIXER.reverb.roomSize;
+    d2.delayTime.value = 0.037 + 0.145*MIXER.reverb.roomSize;
+    d3.delayTime.value = 0.041 + 0.160*MIXER.reverb.roomSize;
+    d4.delayTime.value = 0.053 + 0.180*MIXER.reverb.roomSize;
+    const g1=AC.createGain(), g2=AC.createGain(), g3=AC.createGain(), g4=AC.createGain();
+    g1.gain.value=g2.gain.value=g3.gain.value=g4.gain.value=0.35+0.35*MIXER.reverb.roomSize;
 
-  // ---- 建立每軌 Bus（含 Reverb Send） ----
-  async function mkTrackBus(trackKey, instName){
-    const s = MIXER.tracks[trackKey];
-    const gain = AC.createGain(); gain.gain.value = s.gain;
-    const p = AC.createStereoPanner(); p.pan.value = s.pan;
-    const send = AC.createGain(); send.gain.value = s.amb; // reverb send
-    gain.connect(p).connect(master);
-    gain.connect(send).connect(reverbIn);
-    const inst = instName ? await getInst(instName) : null;
-    const regions = parseRegions(s.regions);
-    return {gain, p, send, inst, regions};
-  }
-  const lead  = await mkTrackBus('lead',  el.instLead.value);
-  const chord = await mkTrackBus('chord', el.instChord.value);
-  const bass  = await mkTrackBus('bass',  el.instBass.value);
+    reverbIn.connect(d1); reverbIn.connect(d2); reverbIn.connect(d3); reverbIn.connect(d4);
+    d1.connect(g2).connect(d2); d2.connect(g3).connect(d3); d3.connect(g4).connect(d4); d4.connect(g1).connect(d1);
+    d1.connect(reverbWet); d2.connect(reverbWet); d3.connect(reverbWet); d4.connect(reverbWet);
 
-  // ---- 安排：只在啟用區間內排事件 ----
-  let beat=0; // 用拍（四分音符）為時間座標
-  // 旋律（主音）
-  for(const [n,d] of candidate.mel){
-    const on = n!=null && isEnabledAtBeat(lead.regions, beat, CURRENT.bpm);
-    if(on){ const node = lead.inst.play(n, t0+beat*secPerBeat, {gain:1, duration:d*secPerBeat, destination:lead.gain}); scheduled.push(node); }
-    beat += d;
-  }
-  // 和弦
-  beat=0;
-  for(const [notes,d] of candidate.acc.chords){
-    const on = notes && notes.length && isEnabledAtBeat(chord.regions, beat, CURRENT.bpm);
-    if(on){ notes.forEach(nn=>{ const node = chord.inst.play(nn, t0+beat*secPerBeat, {gain:0.85, duration:d*secPerBeat, destination:chord.gain}); scheduled.push(node); }); }
-    beat += d;
-  }
-  // 貝斯
-  beat=0;
-  for(const [n,d] of candidate.acc.bass){
-    const on = n!=null && isEnabledAtBeat(bass.regions, beat, CURRENT.bpm);
-    if(on){ const node = bass.inst.play(Math.max(0,n-12), t0+beat*secPerBeat, {gain:0.95, duration:d*secPerBeat, destination:bass.gain}); scheduled.push(node); }
-    beat += d;
-  }
+    master.connect(AC.destination); reverbWet.connect(AC.destination);
+    MIXER.masterGainNode = master;
 
-  // 鼓（合成，對 CPU 友善；最終可用 MIDI + Actions 轉真鼓）
-  if(el.drumsOn.value==='on'){
-    const dg = AC.createGain(); dg.gain.value = MIXER.tracks.drums.gain;
-    const dp = AC.createStereoPanner(); dp.pan.value = MIXER.tracks.drums.pan;
-    const ds = AC.createGain(); ds.gain.value = MIXER.tracks.drums.amb;
-    dg.connect(dp).connect(master); dg.connect(ds).connect(reverbIn);
-    const playKick=time=>{ const osc=AC.createOscillator(), g=AC.createGain();
-      osc.type='sine'; osc.frequency.setValueAtTime(150,time); osc.frequency.exponentialRampToValueAtTime(40,time+0.1);
-      g.gain.setValueAtTime(0.9,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.12);
-      osc.connect(g).connect(dg); osc.start(time); osc.stop(time+0.15); };
-    const playSnare=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.2,AC.sampleRate),data=buf.getChannelData(0);
-      for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
-      const noise=AC.createBufferSource(); noise.buffer=buf;
-      const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800;
-      const g=AC.createGain(); g.gain.setValueAtTime(0.6,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.15);
-      noise.connect(bp).connect(g).connect(dg); noise.start(time); noise.stop(time+0.2); };
-    const playHat=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.05,AC.sampleRate),data=buf.getChannelData(0);
-      for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
-      const noise=AC.createBufferSource(); noise.buffer=buf;
-      const hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
-      const g=AC.createGain(); g.gain.setValueAtTime(0.25,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.05);
-      noise.connect(hp).connect(g).connect(dg); noise.start(time); noise.stop(time+0.06); };
-
-    // 12 等分（每拍 1/3）迭代鼓點，同步「片段啟用」
-    let tt=0, step=secPerBeat/3;
-    const drumsRegions = parseRegions(MIXER.tracks.drums.regions);
-    for(const [name,onFlag] of candidate.acc.drums){
-      const enabled = isEnabledAtBeat(drumsRegions, tt/secPerBeat, CURRENT.bpm);
-      if(onFlag && enabled){
-        if(name==='kick') playKick(t0+tt);
-        else if(name==='snare') playSnare(t0+tt);
-        else playHat(t0+tt);
-      }
-      tt += step;
+    // ---- 建立每軌 Bus（含 Reverb Send），支援注入預載樂器 ----
+    async function mkTrackBus(trackKey, instName, pre){
+      const s = MIXER.tracks[trackKey];
+      const gain = AC.createGain(); gain.gain.value = s.gain;
+      const p = AC.createStereoPanner(); p.pan.value = s.pan;
+      const send = AC.createGain(); send.gain.value = s.amb; // reverb send
+      gain.connect(p).connect(master);
+      gain.connect(send).connect(reverbIn);
+      const inst = pre ? pre : (instName ? await getInst(instName) : null);
+      const regions = parseRegions(s.regions);
+      return {gain, p, send, inst, regions};
     }
-  }
+    const lead  = await mkTrackBus('lead',  el.instLead.value,  leadPre);
+    const chord = await mkTrackBus('chord', el.instChord.value, chordPre);
+    const bass  = await mkTrackBus('bass',  el.instBass.value,  bassPre);
 
-  setLog("播放中（片段啟用＋空間感生效）。");
+    // ---- 安排：只在啟用區間內排事件 ----
+    let beat=0; // 用拍（四分音符）為時間座標
+    // 旋律（主音）
+    for(const [n,d] of candidate.mel){
+      const on = n!=null && isEnabledAtBeat(lead.regions, beat, CURRENT.bpm);
+      if(on){ const node = lead.inst.play(n, t0+beat*secPerBeat, {gain:1, duration:d*secPerBeat, destination:lead.gain}); scheduled.push(node); }
+      beat += d;
+    }
+    // 和弦
+    beat=0;
+    for(const [notes,d] of candidate.acc.chords){
+      const on = notes && notes.length && isEnabledAtBeat(chord.regions, beat, CURRENT.bpm);
+      if(on){ notes.forEach(nn=>{ const node = chord.inst.play(nn, t0+beat*secPerBeat, {gain:0.85, duration:d*secPerBeat, destination:chord.gain}); scheduled.push(node); }); }
+      beat += d;
+    }
+    // 貝斯
+    beat=0;
+    for(const [n,d] of candidate.acc.bass){
+      const on = n!=null && isEnabledAtBeat(bass.regions, beat, CURRENT.bpm);
+      if(on){ const node = bass.inst.play(Math.max(0,n-12), t0+beat*secPerBeat, {gain:0.95, duration:d*secPerBeat, destination:bass.gain}); scheduled.push(node); }
+      beat += d;
+    }
+
+    // 鼓（合成，對 CPU 友善；最終可用 MIDI + Actions 轉真鼓）
+    if(el.drumsOn.value==='on'){
+      const dg = AC.createGain(); dg.gain.value = MIXER.tracks.drums.gain;
+      const dp = AC.createStereoPanner(); dp.pan.value = MIXER.tracks.drums.pan;
+      const ds = AC.createGain(); ds.gain.value = MIXER.tracks.drums.amb;
+      dg.connect(dp).connect(master); dg.connect(ds).connect(reverbIn);
+      const playKick=time=>{ const osc=AC.createOscillator(), g=AC.createGain();
+        osc.type='sine'; osc.frequency.setValueAtTime(150,time); osc.frequency.exponentialRampToValueAtTime(40,time+0.1);
+        g.gain.setValueAtTime(0.9,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.12);
+        osc.connect(g).connect(dg); osc.start(time); osc.stop(time+0.15); };
+      const playSnare=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.2,AC.sampleRate),data=buf.getChannelData(0);
+        for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+        const noise=AC.createBufferSource(); noise.buffer=buf;
+        const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800;
+        const g=AC.createGain(); g.gain.setValueAtTime(0.6,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.15);
+        noise.connect(bp).connect(g).connect(dg); noise.start(time); noise.stop(time+0.2); };
+      const playHat=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.05,AC.sampleRate),data=buf.getChannelData(0);
+        for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1;
+        const noise=AC.createBufferSource(); noise.buffer=buf;
+        const hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000;
+        const g=AC.createGain(); g.gain.setValueAtTime(0.25,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.05);
+        noise.connect(hp).connect(g).connect(dg); noise.start(time); noise.stop(time+0.06); };
+
+      // 12 等分（每拍 1/3）迭代鼓點，同步「片段啟用」
+      let tt=0, step=secPerBeat/3;
+      const drumsRegions = parseRegions(MIXER.tracks.drums.regions);
+      for(const [name,onFlag] of candidate.acc.drums){
+        const enabled = isEnabledAtBeat(drumsRegions, tt/secPerBeat, CURRENT.bpm);
+        if(onFlag && enabled){
+          if(name==='kick') playKick(t0+tt);
+          else if(name==='snare') playSnare(t0+tt);
+          else playHat(t0+tt);
+        }
+        tt += step;
+      }
+    }
+
+    setLog("播放中（片段啟用＋空間感生效）。");
+  }catch(err){
+    console.error(err);
+    setLog("播放失敗：" + err.message);
+  }
 }
 
 /* 停止 */
@@ -740,10 +782,11 @@ el.btnSave.onclick=()=>{
 /* 錄音輸出（總混音 → WEBM） */
 el.btnRecord.onclick = async ()=>{
   if(!CURRENT.mel){ setLog("請先生成/選定候選。"); return; }
-  if(AC.state!=="running") await AC.resume();
+  await unlockAudio();
+  if(AC.state!=="running"){ setLog("瀏覽器尚未允許音訊播放，請點一下頁面任意處後再試。"); return; }
 
   const dest = AC.createMediaStreamDestination();
-  // 直接重用 playWithMix 的路由：簡化版只建一個 master 連到 dest+喇叭
+  // 直接重建一次簡易路由：master→dest+喇叭
   const master = AC.createGain(); master.gain.value=parseFloat(el.masterGain.value||"0.9");
   master.connect(AC.destination); master.connect(dest);
 
@@ -754,14 +797,13 @@ el.btnRecord.onclick = async ()=>{
   const bLead=bus(MIXER.tracks.lead.gain, MIXER.tracks.lead.pan);
   const bChord=bus(MIXER.tracks.chord.gain, MIXER.tracks.chord.pan);
   const bBass=bus(MIXER.tracks.bass.gain, MIXER.tracks.bass.pan);
-  const drumsOn = (document.getElementById('drumsOn').value==='on');
   const bDr=bus(MIXER.tracks.drums.gain, MIXER.tracks.drums.pan);
 
   let t=0; for(const [n,d] of CURRENT.mel){ if(n!=null) lead.play(n,t0+t,{gain:1,duration:d*secPerBeat,destination:bLead}); t+=d*secPerBeat; }
   t=0; for(const [notes,d] of CURRENT.acc.chords){ if(notes&&notes.length){ notes.forEach(nn=>chord.play(nn,t0+t,{gain:0.8,duration:d*secPerBeat,destination:bChord})); } t+=d*secPerBeat; }
   t=0; for(const [n,d] of CURRENT.acc.bass){ if(n!=null) bass.play(Math.max(0,n-12),t0+t,{gain:0.95,duration:d*secPerBeat,destination:bBass}); t+=d*secPerBeat; }
 
-  if(drumsOn){
+  if(el.drumsOn.value==='on'){
     const playKick=time=>{ const osc=AC.createOscillator(), g=AC.createGain(); osc.type='sine'; osc.frequency.setValueAtTime(150,time); osc.frequency.exponentialRampToValueAtTime(40,time+0.1); g.gain.setValueAtTime(0.9,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.12); osc.connect(g).connect(bDr); osc.start(time); osc.stop(time+0.15); };
     const playSnare=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.2,AC.sampleRate),data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1; const noise=AC.createBufferSource(); noise.buffer=buf; const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1800; const g=AC.createGain(); g.gain.setValueAtTime(0.6,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.15); noise.connect(bp).connect(g).connect(bDr); noise.start(time); noise.stop(time+0.2); };
     const playHat=time=>{ const buf=AC.createBuffer(1,AC.sampleRate*0.05,AC.sampleRate),data=buf.getChannelData(0); for(let i=0;i<data.length;i++) data[i]=Math.random()*2-1; const noise=AC.createBufferSource(); noise.buffer=buf; const hp=AC.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=6000; const g=AC.createGain(); g.gain.setValueAtTime(0.25,time); g.gain.exponentialRampToValueAtTime(0.001,time+0.05); noise.connect(hp).connect(g).connect(bDr); noise.start(time); noise.stop(time+0.06); };
@@ -787,7 +829,9 @@ el.btnRecord.onclick = async ()=>{
 /* 分軌音訊：逐軌 Solo 錄製（4 檔 WEBM） */
 el.btnStems.onclick = async ()=>{
   if(!CURRENT.mel){ setLog("請先生成/選定候選。"); return; }
-  if(AC.state!=="running") await AC.resume();
+  await unlockAudio();
+  if(AC.state!=="running"){ setLog("請點一下頁面任意處後再試。"); return; }
+
   const secPerBeat = 60/CURRENT.bpm;
   const parts = ['lead','chord','bass','drums'];
   const names = {lead:'lead', chord:'chord', bass:'bass', drums:'drums'};
@@ -839,4 +883,3 @@ el.pool.value = 'E3,G#4,F#4,G3,F#4,F#3,G3,D4,'.repeat(125); // 例：約 1000 �
 
 </body>
 </html>
-
